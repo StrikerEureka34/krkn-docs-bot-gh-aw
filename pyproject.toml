@@ -1,0 +1,16 @@
+[project]
+name = "krkn-docs-bot"
+version = "0.1.0"
+description = "Documentation sync bot for krkn-chaos, gh-aw edition"
+requires-python = ">=3.11"
+dependencies = ["openai>=1.0", "PyYAML>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["bot"]
