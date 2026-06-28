@@ -9,14 +9,8 @@ from bot.parser import extract_env_params, extract_krknctl_params, build_skip_li
 from bot.github_client import create_or_update_drift_issue
 
 
-def _env_defaults(path: Path) -> dict[str, str]:
-    return {r.name: (r.default if r.default is not None else "")
-            for r in extract_env_params(path)}
-
-
-def _krknctl_defaults(path: Path) -> dict[str, str]:
-    return {r.name: (r.default if r.default is not None else "")
-            for r in extract_krknctl_params(path)}
+def _record_defaults(records) -> dict[str, str]:
+    return {r.name: (r.default if r.default is not None else "") for r in records}
 
 
 def _yaml_defaults(path: Path) -> dict[str, str]:
@@ -35,9 +29,9 @@ def _source_defaults(scenario_dir: Path) -> dict[str, str]:
     env_sh = scenario_dir / "env.sh"
     krknctl_json = scenario_dir / "krknctl-input.json"
     if env_sh.exists():
-        params.update(_env_defaults(env_sh))
+        params.update(_record_defaults(extract_env_params(env_sh)))
     if krknctl_json.exists():
-        params.update(_krknctl_defaults(krknctl_json))
+        params.update(_record_defaults(extract_krknctl_params(krknctl_json)))
     return params
 
 
