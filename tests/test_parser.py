@@ -25,9 +25,6 @@ def test_build_skip_list(tmp_path):
     assert "IMAGE" in skip
 
 
-# ---------------------------------------------------------------------------
-# v2 extraction grammar: env.sh
-# ---------------------------------------------------------------------------
 
 def test_extract_bare_var_is_required_no_default(tmp_path):
     """pvc-scenario pattern: export PVC_NAME=${PVC_NAME}"""
@@ -134,9 +131,6 @@ def test_extract_skips_other_expansions(tmp_path):
     assert recs == {}
 
 
-# ---------------------------------------------------------------------------
-# v2 golden-file tests: real krkn-hub env.sh files
-# ---------------------------------------------------------------------------
 
 def test_golden_pvc_scenario_env():
     recs = {r.name: r for r in extract_env_params(FIXTURES / "pvc-scenario_env.sh")}
@@ -174,9 +168,6 @@ def test_golden_global_env():
     assert recs["KRKN_KUBE_CONFIG"].required is False
 
 
-# ---------------------------------------------------------------------------
-# v2 krknctl-input.json: full schema
-# ---------------------------------------------------------------------------
 
 def test_krknctl_full_schema_application_outages():
     recs = {r.name: r for r in extract_krknctl_params(FIXTURES / "application-outages_krknctl-input.json")}
@@ -219,9 +210,6 @@ def test_krknctl_malformed_inputs(tmp_path):
     assert recs[0].default == "1"
 
 
-# ---------------------------------------------------------------------------
-# Adversarial battery: hostile-but-plausible env.sh lines
-# ---------------------------------------------------------------------------
 
 def test_adv_nested_expansion_kept_literal(tmp_path):
     recs = _records(tmp_path, "export A=${A:=${B:-x}}\n")
