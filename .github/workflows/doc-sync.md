@@ -77,13 +77,13 @@ Follow these steps exactly. Do not invent parameters or change any value already
    git clone https://github.com/StrikerEureka34/krkn-hub.git krkn-hub
    ```
 
-3. Generate YAML data files and inject the shortcode into the scenario tab page:
+3. From the repository root (the website checkout you are already in, NOT inside the `krkn-hub/` clone), generate the YAML data files and inject the shortcode into the scenario tab page:
    ```
    python3 -m bot.doc_bot --scenario "<scenario>" --scaffold
    ```
-   This writes `data/params/<scenario>/krkn-hub.yaml` and replaces the existing markdown parameter table in the scenario's `_tab-krkn-hub.md` with `{{< param-table >}}`. Both operations are idempotent. The bot preserves descriptions that already exist and writes a generic placeholder (`Configures <param>.`) only for newly added or changed parameters.
+   The bot writes its output relative to the current directory, so the data file lands at `./data/params/<scenario>/krkn-hub.yaml` in the **repository root** — it does NOT go inside the cloned `krkn-hub/` directory (that holds only the source `env.sh`). It also replaces the existing markdown parameter table in the scenario's `_tab-krkn-hub.md` with `{{< param-table >}}`. Both operations are idempotent. The bot preserves descriptions that already exist and writes a generic placeholder (`Configures <param>.`) only for newly added or changed parameters.
 
-4. Improve only the placeholder descriptions. In each generated `data/params/<scenario>/*.yaml`, find the `description` fields that read as a generic placeholder (`Configures ...`) and replace each with one clear, accurate sentence describing what that parameter does, based on its name and default. These are the new or changed parameters. Do not change any `name`, `type`, or `default`, and do not touch any description that is not a placeholder.
+4. Confirm the data file was written, then improve only the placeholder descriptions. List `./data/params/<scenario>/` (at the repository root, not under `krkn-hub/`) to find the generated `*.yaml`. In each, find the `description` fields that read as a generic placeholder (`Configures ...`) and replace each with one clear, accurate sentence describing what that parameter does, based on its name and default. These are the new or changed parameters. Do not change any `name`, `type`, or `default`, and do not touch any description that is not a placeholder. If no data file was generated, the scenario has no new parameters — only then is `noop` appropriate.
 
 5. Choose the safe-output based on the trigger:
    - If the trigger is `resync`: use `push-to-pull-request-branch` to push the updated YAML to the branch of the existing draft PR for this scenario.
