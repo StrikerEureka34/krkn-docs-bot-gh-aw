@@ -56,7 +56,6 @@ safe-outputs:
     target-repo: "StrikerEureka34/website_2"
     draft: true
     title-prefix: "[docs-sync] "
-    labels: [documentation, automated]
     max: 1
   push-to-pull-request-branch:
     target-repo: "StrikerEureka34/website_2"
