@@ -19,11 +19,12 @@ permissions: read-all
 # Engine options (exactly one active block below):
 #
 # (a) Copilot (ACTIVE): zero cost on the Student plan via COPILOT_GITHUB_TOKEN.
-#     gpt-4o-mini: the agent no longer edits files, so the task is light enough
-#     for mini and stays well under the utility-model rate limit.
+#     gpt-4o: mini confabulated false failures and no-op'd even with files present.
+#     With agent editing removed, gpt-4o makes ~5 light calls (no patch retries),
+#     so it stays under the utility-model rate limit and reads ls correctly.
 engine:
   id: copilot
-  model: gpt-4o-mini
+  model: gpt-4o
 #
 # (b) OpenAI direct: ENGINE_API_KEY secret holds an sk-... OpenAI key.
 # engine:
