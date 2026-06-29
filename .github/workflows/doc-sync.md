@@ -5,17 +5,15 @@
 
 on:
   slash_command:
-    - fix
-    - resync
+    name: [fix, resync]
   workflow_dispatch:
     inputs:
       scenario:
         description: "Scenario name (e.g. node-scenarios)"
-        required: true
+        required: false
+  roles: [admin, maintainer, write]
 
 permissions: read-all
-
-roles: [admin, maintainer, write]
 
 engine:
   id: codex
@@ -23,18 +21,15 @@ engine:
   env:
     OPENAI_BASE_URL: https://openrouter.ai/api/v1
     OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
-    LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
     LLM_BASE_URL: https://openrouter.ai/api/v1
     LLM_MODEL: nvidia/nemotron-3-nano-30b-a3b:free
 
 network:
   allowed:
     - defaults
+    - github
+    - python
     - "openrouter.ai"
-    - "github.com"
-    - "objects.githubusercontent.com"
-    - "pypi.org"
-    - "files.pythonhosted.org"
 
 tools:
   bash: ["python3", "pip3", "git"]
@@ -62,8 +57,9 @@ safe-outputs:
 
 You are a documentation sync assistant for krkn-chaos scenarios.
 
-**Scenario:** ${{ inputs.scenario || github.event.slash_command.args }}
-**Trigger:** ${{ github.event.slash_command.name || 'workflow_dispatch' }}
+Determine the target scenario from whichever trigger fired:
+- For a manual run, it is the `scenario` input: `${{ github.event.inputs.scenario }}`.
+- For a slash command, it is the word after the command in the triggering comment, for example `/fix node-scenarios` means the scenario is `node-scenarios`.
 
 Follow these steps exactly. Do not invent parameters or change any value already present in an existing YAML file.
 
