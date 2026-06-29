@@ -23,12 +23,11 @@ permissions: read-all
 #   id: copilot
 #   model: gpt-4o
 #
-# (b) OpenRouter: needs ENGINE_API_KEY secret + credit.
+# (b) OpenAI direct: ENGINE_API_KEY secret holds an sk-... OpenAI key.
 # engine:
 #   id: codex
-#   model: openai/gpt-oss-120b
+#   model: gpt-4o
 #   env:
-#     OPENAI_BASE_URL: https://openrouter.ai/api/v1
 #     OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
 #
 # (c) Gemini: needs GEMINI_API_KEY secret. Note: the safeoutputs MCP tools did
@@ -37,11 +36,14 @@ permissions: read-all
 #   id: gemini
 #   model: gemini-2.5-flash
 #
-# (d) OpenAI (ACTIVE): ENGINE_API_KEY secret must hold an sk-... OpenAI key.
+# (d) OpenRouter free router (ACTIVE): ENGINE_API_KEY secret holds an OpenRouter
+#     key (sk-or-v1-...). Free tier, so expect rate limits and variable tool-call
+#     quality. The openrouter/free slug is colon-free, so gh-aw accepts it.
 engine:
   id: codex
-  model: gpt-4o
+  model: openrouter/free
   env:
+    OPENAI_BASE_URL: https://openrouter.ai/api/v1
     OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
 
 network:
@@ -49,9 +51,9 @@ network:
     - defaults
     - github
     - python
-    - "api.openai.com"
-    # - "generativelanguage.googleapis.com"  # used with Gemini engine
-    # - "openrouter.ai"  # used with OpenRouter engine
+    - "openrouter.ai"
+    # - "api.openai.com"                       # used with OpenAI direct engine
+    # - "generativelanguage.googleapis.com"    # used with Gemini engine
 
 tools:
   bash: ["python3", "pip3", "git"]
