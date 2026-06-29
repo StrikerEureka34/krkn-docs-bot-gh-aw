@@ -19,10 +19,11 @@ permissions: read-all
 # Engine options (exactly one active block below):
 #
 # (a) Copilot (ACTIVE): zero cost on the Student plan via COPILOT_GITHUB_TOKEN.
-#     gpt-4o (utility tier, no premium quota); mini was too weak and wrongly no-op'd.
+#     gpt-4o-mini: the agent no longer edits files, so the task is light enough
+#     for mini and stays well under the utility-model rate limit.
 engine:
   id: copilot
-  model: gpt-4o
+  model: gpt-4o-mini
 #
 # (b) OpenAI direct: ENGINE_API_KEY secret holds an sk-... OpenAI key.
 # engine:
@@ -106,7 +107,7 @@ Follow these steps exactly. Do not invent parameters or change any value already
 4. List `./data/params/<scenario>/` (at the repository root, not under `krkn-hub/`). Decide strictly from what it lists:
    - If it lists one or more `*.yaml` files, the sync succeeded: you MUST continue to step 5 and create the pull request. Do NOT call `noop`, and do NOT claim the scenario is missing when YAML files are present.
    - Only if the directory is empty or does not exist may you call `noop`.
-   When YAML files are present, improve only the placeholder descriptions: in each generated `*.yaml`, find `description` fields that read as a generic placeholder (`Configures ...`) and replace each with one clear, accurate sentence describing what that parameter does, based on its name and default. Do not change any `name`, `type`, or `default`, and do not touch any description that is not a placeholder.
+   Do not edit the generated YAML files. The bot has already filled every `description` with a sensible default, so leave the files exactly as generated and go straight to creating the pull request.
 
 5. Choose the safe-output based on the trigger:
    - If the trigger is `resync`: use `push-to-pull-request-branch` to push the updated YAML to the branch of the existing draft PR for this scenario.
