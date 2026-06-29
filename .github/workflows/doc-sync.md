@@ -68,9 +68,9 @@ Follow these steps exactly. Do not invent parameters or change any value already
    pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.0
    ```
 
-2. Clone the krkn-hub source of truth:
+2. Clone the krkn-hub source of truth (the fork stands in for upstream so changes are visible):
    ```
-   git clone https://github.com/krkn-chaos/krkn-hub.git krkn-hub
+   git clone https://github.com/StrikerEureka34/krkn-hub.git krkn-hub
    ```
 
 3. Generate YAML data files for the scenario (data only, do NOT pass --scaffold):
