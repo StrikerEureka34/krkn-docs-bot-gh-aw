@@ -31,18 +31,26 @@ permissions: read-all
 #     OPENAI_BASE_URL: https://openrouter.ai/api/v1
 #     OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
 #
-# (c) Gemini (ACTIVE): needs GEMINI_API_KEY secret on the repo.
-#     Bump model to gemini-2.5-pro if flash is flaky on tool calls.
+# (c) Gemini: needs GEMINI_API_KEY secret. Note: the safeoutputs MCP tools did
+#     not register under the Gemini CLI in gh-aw v0.80.9, so it could not open PRs.
+# engine:
+#   id: gemini
+#   model: gemini-2.5-flash
+#
+# (d) OpenAI (ACTIVE): ENGINE_API_KEY secret must hold an sk-... OpenAI key.
 engine:
-  id: gemini
-  model: gemini-2.5-flash
+  id: codex
+  model: gpt-4o
+  env:
+    OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
 
 network:
   allowed:
     - defaults
     - github
     - python
-    - "generativelanguage.googleapis.com"
+    - "api.openai.com"
+    # - "generativelanguage.googleapis.com"  # used with Gemini engine
     # - "openrouter.ai"  # used with OpenRouter engine
 
 tools:
