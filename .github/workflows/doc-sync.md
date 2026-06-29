@@ -73,7 +73,7 @@ Follow these steps exactly. Do not invent parameters or change any value already
 
 1. Install the docs bot:
    ```
-   pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.3
+   pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.5
    ```
 
 2. Clone the krkn-hub source of truth (the fork stands in for upstream so changes are visible):

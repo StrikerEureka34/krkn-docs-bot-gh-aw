@@ -2,13 +2,17 @@ import re
 import json
 import time
 import os
-from openai import OpenAI, RateLimitError
+import urllib.request
+import urllib.error
 
 BASE_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")
 MODEL    = os.environ.get("LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
 API_KEY  = os.environ.get("LLM_API_KEY") or os.environ.get("OPENROUTER_API_KEY") or os.environ.get("GITHUB_TOKEN", "")
 
-_client = OpenAI(base_url=BASE_URL, api_key=API_KEY or None)
+
+class RateLimited(Exception):
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after
 
 
 class _Response:
@@ -19,11 +23,26 @@ class _Response:
 class _Model:
     """Thin shim so tests can patch `bot.llm_client.model` unchanged."""
     def generate_content(self, prompt: str) -> _Response:
-        completion = _client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
+        body = json.dumps({
+            "model": MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+        }).encode()
+        req = urllib.request.Request(
+            f"{BASE_URL}/chat/completions",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json",
+            },
         )
-        return _Response(completion.choices[0].message.content or "")
+        try:
+            with urllib.request.urlopen(req) as resp:
+                data = json.load(resp)
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                raise RateLimited(int(e.headers.get("Retry-After", 35)) + 5)
+            raise
+        return _Response(data["choices"][0]["message"]["content"] or "")
 
 
 model = _Model()
@@ -63,14 +82,9 @@ def call_llm_with_retry(prompt: str, max_retries: int = 3) -> list[dict]:
                     f"LLM returned invalid JSON after {max_retries} attempts: {e}"
                 )
             time.sleep(2 ** attempt)
-        except RateLimitError as e:
-            retry_after = 35
-            try:
-                retry_after = int(e.response.json()["error"]["metadata"]["retry_after_seconds"]) + 5
-            except Exception:
-                pass
+        except RateLimited as e:
             if attempt < max_retries - 1:
-                time.sleep(retry_after)
+                time.sleep(e.retry_after)
             else:
                 return []
     return []
