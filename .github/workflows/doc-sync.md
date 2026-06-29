@@ -18,10 +18,11 @@ permissions: read-all
 
 # Engine options (exactly one active block below):
 #
-# (a) Copilot: zero cost on the Student plan, but rate-limited and the PAT expires.
-# engine:
-#   id: copilot
-#   model: gpt-4o
+# (a) Copilot (ACTIVE): zero cost on the Student plan via COPILOT_GITHUB_TOKEN.
+#     Lower-tier model (gpt-4o-mini) to ease the utility-model rate limit.
+engine:
+  id: copilot
+  model: gpt-4o-mini
 #
 # (b) OpenAI direct: ENGINE_API_KEY secret holds an sk-... OpenAI key.
 # engine:
@@ -36,22 +37,22 @@ permissions: read-all
 #   id: gemini
 #   model: gemini-2.5-flash
 #
-# (d) OpenRouter free router (ACTIVE): ENGINE_API_KEY secret holds an OpenRouter
-#     key (sk-or-v1-...). Free tier, so expect rate limits and variable tool-call
-#     quality. The openrouter/free slug is colon-free, so gh-aw accepts it.
-engine:
-  id: codex
-  model: openrouter/free
-  env:
-    OPENAI_BASE_URL: https://openrouter.ai/api/v1
-    OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
+# (d) OpenRouter free router: ENGINE_API_KEY holds an OpenRouter key. The free
+#     providers rejected the Codex tool-call format (namespace vs function), so
+#     it could not open PRs.
+# engine:
+#   id: codex
+#   model: openrouter/free
+#   env:
+#     OPENAI_BASE_URL: https://openrouter.ai/api/v1
+#     OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
 
 network:
   allowed:
     - defaults
     - github
     - python
-    - "openrouter.ai"
+    # - "openrouter.ai"                        # used with OpenRouter engine
     # - "api.openai.com"                       # used with OpenAI direct engine
     # - "generativelanguage.googleapis.com"    # used with Gemini engine
 
