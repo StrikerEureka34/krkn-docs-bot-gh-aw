@@ -16,25 +16,34 @@ on:
 
 permissions: read-all
 
-# To switch back to codex/OpenRouter (requires ENGINE_API_KEY secret + OpenRouter credit):
+# Engine options (exactly one active block below):
+#
+# (a) Copilot: zero cost on the Student plan, but rate-limited and the PAT expires.
+# engine:
+#   id: copilot
+#   model: gpt-4o
+#
+# (b) OpenRouter: needs ENGINE_API_KEY secret + credit.
 # engine:
 #   id: codex
 #   model: openai/gpt-oss-120b
 #   env:
 #     OPENAI_BASE_URL: https://openrouter.ai/api/v1
 #     OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
-#     LLM_BASE_URL: https://openrouter.ai/api/v1
-#     LLM_MODEL: nvidia/nemotron-3-nano-30b-a3b:free
+#
+# (c) Gemini (ACTIVE): needs GEMINI_API_KEY secret on the repo.
+#     Bump model to gemini-2.5-pro if flash is flaky on tool calls.
 engine:
-  id: copilot
-  model: gpt-4o
+  id: gemini
+  model: gemini-2.5-flash
 
 network:
   allowed:
     - defaults
     - github
     - python
-    # - "openrouter.ai"  # used with codex engine
+    - "generativelanguage.googleapis.com"
+    # - "openrouter.ai"  # used with OpenRouter engine
 
 tools:
   bash: ["python3", "pip3", "git"]
