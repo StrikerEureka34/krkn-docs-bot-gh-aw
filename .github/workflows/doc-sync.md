@@ -19,10 +19,10 @@ permissions: read-all
 # Engine options (exactly one active block below):
 #
 # (a) Copilot (ACTIVE): zero cost on the Student plan via COPILOT_GITHUB_TOKEN.
-#     Lower-tier model (gpt-4o-mini) to ease the utility-model rate limit.
+#     gpt-4o (utility tier, no premium quota); mini was too weak and wrongly no-op'd.
 engine:
   id: copilot
-  model: gpt-4o-mini
+  model: gpt-4o
 #
 # (b) OpenAI direct: ENGINE_API_KEY secret holds an sk-... OpenAI key.
 # engine:
@@ -103,10 +103,13 @@ Follow these steps exactly. Do not invent parameters or change any value already
    ```
    The bot writes its output relative to the current directory, so the data file lands at `./data/params/<scenario>/krkn-hub.yaml` in the **repository root** — it does NOT go inside the cloned `krkn-hub/` directory (that holds only the source `env.sh`). It also replaces the existing markdown parameter table in the scenario's `_tab-krkn-hub.md` with `{{< param-table >}}`. Both operations are idempotent. The bot preserves descriptions that already exist and writes a generic placeholder (`Configures <param>.`) only for newly added or changed parameters.
 
-4. Confirm the data file was written, then improve only the placeholder descriptions. List `./data/params/<scenario>/` (at the repository root, not under `krkn-hub/`) to find the generated `*.yaml`. In each, find the `description` fields that read as a generic placeholder (`Configures ...`) and replace each with one clear, accurate sentence describing what that parameter does, based on its name and default. These are the new or changed parameters. Do not change any `name`, `type`, or `default`, and do not touch any description that is not a placeholder. If no data file was generated, the scenario has no new parameters — only then is `noop` appropriate.
+4. List `./data/params/<scenario>/` (at the repository root, not under `krkn-hub/`). Decide strictly from what it lists:
+   - If it lists one or more `*.yaml` files, the sync succeeded: you MUST continue to step 5 and create the pull request. Do NOT call `noop`, and do NOT claim the scenario is missing when YAML files are present.
+   - Only if the directory is empty or does not exist may you call `noop`.
+   When YAML files are present, improve only the placeholder descriptions: in each generated `*.yaml`, find `description` fields that read as a generic placeholder (`Configures ...`) and replace each with one clear, accurate sentence describing what that parameter does, based on its name and default. Do not change any `name`, `type`, or `default`, and do not touch any description that is not a placeholder.
 
 5. Choose the safe-output based on the trigger:
    - If the trigger is `resync`: use `push-to-pull-request-branch` to push the updated YAML to the branch of the existing draft PR for this scenario.
    - Otherwise (`fix` or `workflow_dispatch`): use `create-pull-request` to open a new draft PR.
 
-If the scenario does not exist in krkn-hub, stop and explain why. Never read or log secrets. Never contact any domain not in the network allowlist.
+Never read or log secrets. Never contact any domain not in the network allowlist.
