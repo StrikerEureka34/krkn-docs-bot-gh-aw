@@ -1,0 +1,42 @@
+{{/* param-table: renders a scenario's parameter table from data/params/<scenario>/<source>.yaml.
+     Optional columns appear only when a row uses them. */}}
+{{- $scenario := .Get "scenario" -}}
+{{- $source := .Get "source" -}}
+{{- $data := false -}}
+{{- with site.Data.params -}}{{- $data = index . $scenario $source -}}{{- end -}}
+{{- if or (not $data) (not $data.params) -}}
+  {{- warnf "param-table: no data for scenario=%q source=%q (expected data/params/%s/%s.yaml)" $scenario $source $scenario $source -}}
+{{- else -}}
+  {{- $rows := $data.params -}}
+  {{- $showType := false -}}{{- $showValues := false -}}{{- $showDefault := false -}}{{- $showRequired := false -}}
+  {{- range $rows -}}
+    {{- if isset . "type" }}{{ $showType = true }}{{ end -}}
+    {{- if isset . "possible_values" }}{{ $showValues = true }}{{ end -}}
+    {{- if isset . "default" }}{{ $showDefault = true }}{{ end -}}
+    {{- if isset . "required" }}{{ $showRequired = true }}{{ end -}}
+  {{- end -}}
+<table class="krkn-param-table">
+  <thead>
+    <tr>
+      <th>Parameter</th>
+      <th>Description</th>
+      {{- if $showType }}<th>Type</th>{{ end }}
+      {{- if $showValues }}<th>Possible Values</th>{{ end }}
+      {{- if $showDefault }}<th>Default</th>{{ end }}
+      {{- if $showRequired }}<th>Required</th>{{ end }}
+    </tr>
+  </thead>
+  <tbody>
+    {{- range $rows }}
+    <tr>
+      <td>{{ index . "name" }}</td>
+      <td>{{ index . "description" | markdownify }}</td>
+      {{- if $showType }}<td>{{ index . "type" }}</td>{{ end }}
+      {{- if $showValues }}<td>{{ delimit (index . "possible_values" | default slice) ", " }}</td>{{ end }}
+      {{- if $showDefault }}<td>{{ if isset . "default" }}{{ index . "default" }}{{ end }}</td>{{ end }}
+      {{- if $showRequired }}<td>{{ if isset . "required" }}{{ index . "required" }}{{ end }}</td>{{ end }}
+    </tr>
+    {{- end }}
+  </tbody>
+</table>
+{{- end -}}
