@@ -16,21 +16,29 @@ on:
 
 permissions: read-all
 
+# To switch back to codex/OpenRouter (requires ENGINE_API_KEY secret + OpenRouter credit):
+# engine:
+#   id: codex
+#   model: openai/gpt-oss-120b
+#   env:
+#     OPENAI_BASE_URL: https://openrouter.ai/api/v1
+#     OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
+#     LLM_BASE_URL: https://openrouter.ai/api/v1
+#     LLM_MODEL: nvidia/nemotron-3-nano-30b-a3b:free
 engine:
-  id: codex
-  model: openai/gpt-oss-120b
+  id: copilot
+  model: gpt-4o
   env:
-    OPENAI_BASE_URL: https://openrouter.ai/api/v1
-    OPENAI_API_KEY: ${{ secrets.ENGINE_API_KEY }}
-    LLM_BASE_URL: https://openrouter.ai/api/v1
-    LLM_MODEL: nvidia/nemotron-3-nano-30b-a3b:free
+    LLM_BASE_URL: https://models.inference.ai.azure.com
+    LLM_MODEL: gpt-4o-mini
 
 network:
   allowed:
     - defaults
     - github
     - python
-    - "openrouter.ai"
+    # - "openrouter.ai"  # used with codex engine
+    - "models.inference.ai.azure.com"
 
 tools:
   bash: ["python3", "pip3", "git"]
@@ -66,7 +74,7 @@ Follow these steps exactly. Do not invent parameters or change any value already
 
 1. Install the docs bot:
    ```
-   pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.1
+   pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.3
    ```
 
 2. Clone the krkn-hub source of truth (the fork stands in for upstream so changes are visible):

@@ -6,7 +6,7 @@ from openai import OpenAI, RateLimitError
 
 BASE_URL = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")
 MODEL    = os.environ.get("LLM_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
-API_KEY  = os.environ.get("LLM_API_KEY") or os.environ.get("OPENROUTER_API_KEY", "")
+API_KEY  = os.environ.get("LLM_API_KEY") or os.environ.get("OPENROUTER_API_KEY") or os.environ.get("GITHUB_TOKEN", "")
 
 _client = OpenAI(base_url=BASE_URL, api_key=API_KEY or None)
 
