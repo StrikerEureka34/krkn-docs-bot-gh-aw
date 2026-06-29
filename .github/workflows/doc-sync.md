@@ -12,6 +12,7 @@ on:
         description: "Scenario name (e.g. node-scenarios)"
         required: false
   roles: [admin, maintainer, write]
+  bots: [krkn-docs-bot]
 
 permissions: read-all
 
