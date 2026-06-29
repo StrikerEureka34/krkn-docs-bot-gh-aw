@@ -28,9 +28,6 @@ permissions: read-all
 engine:
   id: copilot
   model: gpt-4o
-  env:
-    LLM_BASE_URL: https://models.inference.ai.azure.com
-    LLM_MODEL: gpt-4o-mini
 
 network:
   allowed:
@@ -38,7 +35,6 @@ network:
     - github
     - python
     # - "openrouter.ai"  # used with codex engine
-    - "models.inference.ai.azure.com"
 
 tools:
   bash: ["python3", "pip3", "git"]
@@ -73,7 +69,7 @@ Follow these steps exactly. Do not invent parameters or change any value already
 
 1. Install the docs bot:
    ```
-   pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.5
+   pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.6
    ```
 
 2. Clone the krkn-hub source of truth (the fork stands in for upstream so changes are visible):
@@ -85,9 +81,11 @@ Follow these steps exactly. Do not invent parameters or change any value already
    ```
    python3 -m bot.doc_bot --scenario "<scenario>" --scaffold
    ```
-   This writes `data/params/<scenario>/krkn-hub.yaml` and replaces the existing markdown parameter table in the scenario's `_tab-krkn-hub.md` with `{{< param-table >}}`. Both operations are idempotent.
+   This writes `data/params/<scenario>/krkn-hub.yaml` and replaces the existing markdown parameter table in the scenario's `_tab-krkn-hub.md` with `{{< param-table >}}`. Both operations are idempotent. The bot preserves descriptions that already exist and writes a generic placeholder (`Configures <param>.`) only for newly added or changed parameters.
 
-4. Choose the safe-output based on the trigger:
+4. Improve only the placeholder descriptions. In each generated `data/params/<scenario>/*.yaml`, find the `description` fields that read as a generic placeholder (`Configures ...`) and replace each with one clear, accurate sentence describing what that parameter does, based on its name and default. These are the new or changed parameters. Do not change any `name`, `type`, or `default`, and do not touch any description that is not a placeholder.
+
+5. Choose the safe-output based on the trigger:
    - If the trigger is `resync`: use `push-to-pull-request-branch` to push the updated YAML to the branch of the existing draft PR for this scenario.
    - Otherwise (`fix` or `workflow_dispatch`): use `create-pull-request` to open a new draft PR.
 

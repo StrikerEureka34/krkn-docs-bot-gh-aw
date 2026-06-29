@@ -16,11 +16,12 @@ def test_emit_then_reemit_is_byte_identical(tmp_path):
     (website / "content/en/docs/scenarios").mkdir(parents=True)
     (website / "content/en/docs/scenarios/all-scenario-env.md").write_text("", encoding="utf-8")
 
-    with patch("bot.doc_bot.llm_describe", return_value={"ACTION": "Act.", "NEW_ONE": "New."}):
-        doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
     out = website / "data/params/node-scenarios/krkn-hub.yaml"
     first = out.read_text(encoding="utf-8")
 
-    with patch("bot.doc_bot.llm_describe", side_effect=AssertionError("LLM must not run")):
+    # Second run: every param already has a description in the file, so the
+    # resolver must not be consulted again and the output stays byte-identical.
+    with patch("bot.doc_bot._no_descriptions", side_effect=AssertionError("must not run")):
         doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
     assert out.read_text(encoding="utf-8") == first

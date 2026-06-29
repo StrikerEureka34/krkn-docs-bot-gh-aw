@@ -8,14 +8,12 @@ import yaml
 from bot.parser import extract_env_params, extract_krknctl_params, build_skip_list
 from bot.descriptions import resolve_descriptions
 from bot.emitter import emit_data_file
-from bot.llm_client import build_prompt, call_llm_with_retry
 
 
-def llm_describe(scenario, names):
-    """Ask the LLM for one-line descriptions for `names`. Returns {name: desc}."""
-    prompt = build_prompt(scenario, {n: "" for n in names})
-    rows = call_llm_with_retry(prompt) or []
-    return {r["parameter"]: r["description"] for r in rows if "parameter" in r}
+# ponytail: the gh-aw Copilot agent writes descriptions for new params, so the
+# bot stays deterministic and emits the placeholder fallback for them.
+def _no_descriptions(scenario, names):
+    return {}
 
 
 def _load_existing(path):
@@ -28,7 +26,7 @@ def _load_existing(path):
 def _emit_one(scenario, source, records, website_root, source_ref):
     out = website_root / "data" / "params" / scenario / f"{source}.yaml"
     existing = _load_existing(out)
-    descs, _ = resolve_descriptions(scenario, records, existing, llm_describe)
+    descs, _ = resolve_descriptions(scenario, records, existing, _no_descriptions)
     emit_data_file(website_root, scenario, source, records, descs, source_ref)
 
 
