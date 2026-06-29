@@ -2,8 +2,8 @@ from pathlib import Path
 
 
 def _is_table_separator(line):
-    s = line.strip()
-    return s.startswith("|") and all(c in "|-: " for c in s)
+    s = line.strip().strip("|").strip()
+    return bool(s) and "-" in s and all(c in "|-: " for c in s)
 
 
 def inject_shortcode(text, scenario, source):
@@ -15,9 +15,9 @@ def inject_shortcode(text, scenario, source):
     lines = text.splitlines(keepends=True)
     sep = end = None
     for i, line in enumerate(lines):
-        if sep is None and _is_table_separator(line) and i > 0 and lines[i - 1].lstrip().startswith("|"):
+        if sep is None and _is_table_separator(line) and i > 0 and "|" in lines[i - 1]:
             sep = i
-        elif sep is not None and not line.strip().startswith("|"):
+        elif sep is not None and "|" not in line:
             end = i
             break
     if sep is None:
@@ -42,5 +42,7 @@ def scaffold_scenario(scenario, website_root):
         tab = _find_tab(website_root, scenario, source)
         if tab is None:
             continue
-        new = inject_shortcode(tab.read_text(encoding="utf-8"), scenario, source)
-        tab.write_text(new, encoding="utf-8")
+        original = tab.read_text(encoding="utf-8")
+        new = inject_shortcode(original, scenario, source)
+        if new != original:
+            tab.write_text(new, encoding="utf-8")

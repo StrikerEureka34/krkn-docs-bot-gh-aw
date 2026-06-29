@@ -65,7 +65,7 @@ Follow these steps exactly. Do not invent parameters or change any value already
 
 1. Install the docs bot:
    ```
-   pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.0
+   pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.1
    ```
 
 2. Clone the krkn-hub source of truth (the fork stands in for upstream so changes are visible):
@@ -73,11 +73,11 @@ Follow these steps exactly. Do not invent parameters or change any value already
    git clone https://github.com/StrikerEureka34/krkn-hub.git krkn-hub
    ```
 
-3. Generate YAML data files for the scenario (data only, do NOT pass --scaffold):
+3. Generate YAML data files and inject the shortcode into the scenario tab page:
    ```
-   python3 -m bot.doc_bot --scenario "<scenario>"
+   python3 -m bot.doc_bot --scenario "<scenario>" --scaffold
    ```
-   This writes to `data/params/<scenario>/`. It is idempotent: re-running never overwrites existing descriptions.
+   This writes `data/params/<scenario>/krkn-hub.yaml` and replaces the existing markdown parameter table in the scenario's `_tab-krkn-hub.md` with `{{< param-table >}}`. Both operations are idempotent.
 
 4. Choose the safe-output based on the trigger:
    - If the trigger is `resync`: use `push-to-pull-request-branch` to push the updated YAML to the branch of the existing draft PR for this scenario.
