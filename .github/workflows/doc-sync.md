@@ -93,9 +93,9 @@ Determine the target scenario from whichever trigger fired:
 
 Follow these steps exactly. Do not invent parameters or change any value already present in an existing YAML file.
 
-1. Install the docs bot:
+1. Install the docs bot into a fixed folder outside the repo (so it never leaks into the PR, and so the module is found regardless of the runner's Python or user-site config):
    ```
-   pip3 install git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.6
+   pip3 install --target /tmp/gh-aw/botpkg git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@v0.1.6
    ```
 
 2. Clone the krkn-hub source of truth (the fork stands in for upstream so changes are visible):
@@ -103,9 +103,9 @@ Follow these steps exactly. Do not invent parameters or change any value already
    git clone https://github.com/StrikerEureka34/krkn-hub.git krkn-hub
    ```
 
-3. From the repository root (the website checkout you are already in, NOT inside the `krkn-hub/` clone), generate the YAML data files and inject the shortcode into the scenario tab page:
+3. From the repository root (the website checkout you are already in, NOT inside the `krkn-hub/` clone), generate the YAML data files and inject the shortcode into the scenario tab page. Point `PYTHONPATH` at the install folder from step 1 so the module resolves on the first try:
    ```
-   python3 -m bot.doc_bot --scenario "<scenario>" --scaffold
+   PYTHONPATH=/tmp/gh-aw/botpkg python3 -m bot.doc_bot --scenario "<scenario>" --scaffold
    ```
    The bot writes its output relative to the current directory, so the data file lands at `./data/params/<scenario>/krkn-hub.yaml` in the **repository root** — it does NOT go inside the cloned `krkn-hub/` directory (that holds only the source `env.sh`). It also replaces the existing markdown parameter table in the scenario's `_tab-krkn-hub.md` with `{{< param-table >}}`. Both operations are idempotent. The bot preserves descriptions that already exist and writes a generic placeholder (`Configures <param>.`) only for newly added or changed parameters.
 
