@@ -175,7 +175,6 @@ def test_krknctl_full_schema_application_outages():
     assert dur.default == "600"
     assert dur.type == "number"
     assert dur.required is False
-    assert dur.cli_name == "chaos-duration"
     assert dur.description_source == "krknctl"
     assert "chaos duration" in dur.description.lower()
     ns = recs["NAMESPACE"]
@@ -190,13 +189,10 @@ def test_krknctl_golden_node_scenarios():
     assert action.type == "enum"
     assert "node_reboot_scenario" in action.allowed_values
     assert len(action.allowed_values) == 12
-    assert recs["VSPHERE_PASSWORD"].secret is True
     assert recs["VSPHERE_PASSWORD"].default == ""     # explicit "" kept, not None
     creds = recs["GOOGLE_APPLICATION_CREDENTIALS"]
     assert creds.type == "file"
-    assert creds.mount_path == "/home/krkn/osServiceAccount.json"
     assert creds.default is None
-    assert creds.secret is False
 
 
 def test_krknctl_malformed_inputs(tmp_path):
@@ -316,8 +312,7 @@ def test_adv_krknctl_null_default_means_no_default(tmp_path):
 
 def test_adv_krknctl_boolean_and_numeric_json_types(tmp_path):
     f = tmp_path / "a.json"
-    f.write_text('[{"variable": "X", "default": 600, "required": true, "secret": false}]')
+    f.write_text('[{"variable": "X", "default": 600, "required": true}]')
     recs = extract_krknctl_params(f)
     assert recs[0].default == "600"
     assert recs[0].required is True
-    assert recs[0].secret is False

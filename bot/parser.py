@@ -14,10 +14,7 @@ class ParamRecord:
     type: str | None = None
     description: str | None = None
     description_source: str | None = None  # "env-comment" | "krknctl"
-    secret: bool = False
     allowed_values: list[str] | None = None
-    cli_name: str | None = None  # krknctl flag name, e.g. "chaos-duration"
-    mount_path: str | None = None  # krknctl "file" type params
 
 
 EXPORT_LINE_RE = re.compile(r'^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$')
@@ -143,8 +140,8 @@ def _as_bool(value: object) -> bool:
 
 
 def extract_krknctl_params(path: Path) -> list[ParamRecord]:
-    """Extract ParamRecords from a krknctl-input.json file, keeping the
-    full schema (description, type, required, secret, allowed_values)."""
+    """Extract ParamRecords from a krknctl-input.json file
+    (description, type, required, allowed_values)."""
     data = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(data, list):
         return []
@@ -166,10 +163,7 @@ def extract_krknctl_params(path: Path) -> list[ParamRecord]:
             type=item.get("type"),
             description=description,
             description_source="krknctl" if description else None,
-            secret=_as_bool(item.get("secret", "false")),
             allowed_values=allowed,
-            cli_name=item.get("name"),
-            mount_path=item.get("mount_path"),
         ))
     return records
 

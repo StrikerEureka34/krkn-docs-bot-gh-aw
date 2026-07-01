@@ -59,11 +59,15 @@ network:
     # - "generativelanguage.googleapis.com"    # used with Gemini engine
 
 tools:
+  # The agent uses bash + safe-outputs only. Keep the github MCP at the minimum
+  # single toolset (empty is rejected) to cut per-turn tool-schema tokens.
+  github:
+    toolsets: [context]
   bash: ["python3", "pip3", "git"]
 
 max-ai-credits: 50
 max-daily-ai-credits: 1000
-max-turns: 10
+max-turns: 6
 timeout-minutes: 15
 
 safe-outputs:
