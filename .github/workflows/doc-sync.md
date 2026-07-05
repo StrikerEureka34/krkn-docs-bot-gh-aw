@@ -56,9 +56,6 @@ network:
     - defaults
     - github
 
-tools:
-  bash: ["git"]
-
 max-turns: 3
 timeout-minutes: 15
 
@@ -77,13 +74,12 @@ safe-outputs:
 
 # Doc Sync
 
-Earlier workflow steps already regenerated this scenario's krkn-chaos parameter data files and injected the shortcode in the working tree. Your only job is to publish those changes. Do not run the bot, install anything, or edit files.
+Earlier workflow steps already regenerated this scenario's krkn-chaos parameter data files and injected the shortcode in the working tree. Do NOT run git, commit, install anything, or edit files. gh-aw stages the working-tree changes for you when you call the safe-output tool.
 
-The triggering command was `${{ needs.pre_activation.outputs.matched_command }}` and the scenario (when set) is `${{ github.event.inputs.scenario }}`.
+The triggering command was `${{ needs.pre_activation.outputs.matched_command }}` and the scenario is `${{ github.event.inputs.scenario }}`.
 
-1. Stage and commit the generated files: run `git add -A`, then `git commit -m "docs-sync: parameter tables"`. If git reports nothing to commit, that is fine, continue.
-2. Call exactly one safe-output tool:
-   - if the triggering command was `resync`, call `push_to_pull_request_branch` to update the scenario's existing pull request.
-   - otherwise call `create_pull_request` with a short title and a body noting that the scenario's parameter data files and shortcode were regenerated from krkn-hub.
+Call exactly one safe-output tool:
+- if the triggering command was `resync`, call `push_to_pull_request_branch` to update the scenario's existing pull request.
+- otherwise call `create_pull_request` with `branch` set to `docs-sync-${{ github.event.inputs.scenario }}`, a short title, and a body noting that the scenario's parameter data files and shortcode were regenerated from krkn-hub.
 
-You must call exactly one safe-output tool before finishing. Never read or log secrets. Never contact any domain outside the network allowlist.
+You must call exactly one safe-output tool before finishing. Do not run any other commands. Never read or log secrets.
