@@ -50,14 +50,20 @@ steps:
     env:
       KRKN_HUB_PATH: ${{ runner.temp }}/krkn-hub
     run: python3 -m bot.doc_bot --scenario "${{ steps.scn.outputs.scenario }}" --scaffold
+  - name: Commit generated files to a branch
+    env:
+      SCENARIO: ${{ steps.scn.outputs.scenario }}
+    run: |
+      git config user.name "krkn-docs-bot"
+      git config user.email "krkn-docs-bot@users.noreply.github.com"
+      git checkout -b "docs-sync-${{ github.run_number }}"
+      git add -A
+      git commit -m "docs-sync: $SCENARIO parameter tables" || echo "no changes to commit"
 
 network:
   allowed:
     - defaults
     - github
-
-tools:
-  bash: ["git"]
 
 max-turns: 3
 timeout-minutes: 15
@@ -77,16 +83,12 @@ safe-outputs:
 
 # Doc Sync
 
-Earlier workflow steps already regenerated this scenario's krkn-chaos parameter data files and injected the shortcode in the working tree. Your job is to commit them to a feature branch and open a pull request. Do not install anything or run the bot.
+Earlier workflow steps already regenerated this scenario's krkn-chaos parameter data files, injected the shortcode, and committed everything to the branch `docs-sync-${{ github.run_number }}`. Your only job is to open the pull request for that branch. Do not run git or any other command.
 
 The scenario is `${{ github.event.inputs.scenario }}` and the triggering command was `${{ needs.pre_activation.outputs.matched_command }}`.
 
-1. Create a feature branch and commit the generated files:
-   - `git checkout -b docs-sync-${{ github.event.inputs.scenario }}`
-   - `git add -A`
-   - `git commit -m "docs-sync: ${{ github.event.inputs.scenario }} parameter tables"`
-2. Call exactly one safe-output tool:
-   - if the triggering command was `resync`, call `push_to_pull_request_branch` to update the scenario's existing pull request.
-   - otherwise call `create_pull_request` with `branch` set to `docs-sync-${{ github.event.inputs.scenario }}`, a short title, and a body noting that the scenario's parameter data files and shortcode were regenerated from krkn-hub.
+Call exactly one safe-output tool:
+- if the triggering command was `resync`, call `push_to_pull_request_branch` to update the scenario's existing pull request.
+- otherwise call `create_pull_request` with `branch` set to `docs-sync-${{ github.run_number }}`, a short title, and a body noting that the scenario's parameter data files and shortcode were regenerated from krkn-hub.
 
 You must call exactly one safe-output tool before finishing. Never read or log secrets.
