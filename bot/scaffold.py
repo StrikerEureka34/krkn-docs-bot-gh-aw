@@ -1,4 +1,7 @@
+import re
 from pathlib import Path
+
+_ID_RE = re.compile(r'<krkn-hub-scenario\s+id="([^"]+)"')
 
 
 def _is_table_separator(line):
@@ -28,10 +31,28 @@ def inject_shortcode(text, scenario, source):
     return "".join(lines[:header] + [call + "\n"] + lines[end:])
 
 
+def _find_scenario_dir(website_root, scenario):
+    """Directory of the page whose _index.md declares this krkn-hub scenario id.
+    Website page dir names diverge from source scenario names (node-cpu-hog ->
+    hog-scenarios/cpu-hog-scenario), so the declared id is the reliable link."""
+    root = Path(website_root) / "content/en/docs/scenarios"
+    for index in root.rglob("_index.md"):
+        m = _ID_RE.search(index.read_text(encoding="utf-8"))
+        if m and m.group(1) == scenario:
+            return index.parent
+    return None
+
+
 def _find_tab(website_root, scenario, source):
+    scn_dir = _find_scenario_dir(website_root, scenario)
+    if scn_dir is not None:
+        tab = scn_dir / f"_tab-{source}.md"
+        return tab if tab.exists() else None
+    # Fallback for pages whose id is missing or disagrees with the source dir
+    # name (e.g. site declares id="pvc-scenarios" for source "pvc-scenario").
     root = Path(website_root) / "content/en/docs/scenarios"
     for tab in root.rglob(f"_tab-{source}.md"):
-        if tab.parent.name == scenario or scenario in tab.parent.name:
+        if tab.parent.name == scenario:
             return tab
     return None
 

@@ -16,6 +16,15 @@ def _no_descriptions(scenario, names):
     return {}
 
 
+def _krknctl_desc_map(scn):
+    """Param name -> maintainer-written description from krknctl-input.json, used
+    to fill env.sh params that carry no description of their own."""
+    f = scn / "krknctl-input.json"
+    if not f.exists():
+        return {}
+    return {r.name: r.description for r in extract_krknctl_params(f) if r.description}
+
+
 def _load_existing(path):
     if not path.exists():
         return {}
@@ -40,6 +49,10 @@ def run(scenario, krkn_hub_root, website_root, source_ref="HEAD"):
     if (scn / "env.sh").exists():
         recs = [r for r in extract_env_params(scn / "env.sh") if r.name not in skip]
         if recs:
+            kdesc = _krknctl_desc_map(scn)
+            for r in recs:
+                if not r.description and r.name in kdesc:
+                    r.description = kdesc[r.name]
             _emit_one(scenario, "krkn-hub", recs, website_root, source_ref)
     if (scn / "krknctl-input.json").exists():
         recs = [r for r in extract_krknctl_params(scn / "krknctl-input.json") if r.name not in skip]
