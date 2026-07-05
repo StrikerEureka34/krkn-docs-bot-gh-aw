@@ -1,6 +1,12 @@
 from bot.scaffold import inject_shortcode, scaffold_scenario
 
 
+def _data(website, scenario, source="krkn-hub"):
+    d = website / "data/params" / scenario
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{source}.yaml").write_text("params: []\n", encoding="utf-8")
+
+
 def _make_page(website, relpath, source_id=None, tab_source="krkn-hub"):
     d = website / "content/en/docs/scenarios" / relpath
     d.mkdir(parents=True, exist_ok=True)
@@ -23,6 +29,7 @@ def _make_page(website, relpath, source_id=None, tab_source="krkn-hub"):
 def test_scaffold_finds_page_by_krkn_hub_id_when_dir_name_differs(tmp_path):
     website = tmp_path / "site"
     tab = _make_page(website, "hog-scenarios/cpu-hog-scenario", source_id="node-cpu-hog")
+    _data(website, "node-cpu-hog", "krkn-hub")
     scaffold_scenario("node-cpu-hog", website)
     out = tab.read_text(encoding="utf-8")
     assert '{{< param-table scenario="node-cpu-hog" source="krkn-hub" >}}' in out
@@ -33,6 +40,7 @@ def test_scaffold_finds_page_by_krkn_hub_id_when_dir_name_differs(tmp_path):
 def test_scaffold_falls_back_to_dir_name_when_id_disagrees(tmp_path):
     website = tmp_path / "site"
     tab = _make_page(website, "pvc-scenario", source_id="pvc-scenarios")
+    _data(website, "pvc-scenario", "krkn-hub")
     scaffold_scenario("pvc-scenario", website)
     assert '{{< param-table scenario="pvc-scenario" source="krkn-hub" >}}' in tab.read_text(encoding="utf-8")
 
@@ -47,6 +55,8 @@ def test_scaffold_does_not_match_dir_name_by_substring(tmp_path):
 def test_scaffold_creates_page_when_none_exists(tmp_path):
     website = tmp_path / "site"
     (website / "content/en/docs/scenarios").mkdir(parents=True)
+    _data(website, "brand-new-scenario", "krkn-hub")
+    _data(website, "brand-new-scenario", "krknctl")
     scaffold_scenario("brand-new-scenario", website)
     page = website / "content/en/docs/scenarios/brand-new-scenario"
     idx = (page / "_index.md").read_text(encoding="utf-8")
@@ -56,6 +66,19 @@ def test_scaffold_creates_page_when_none_exists(tmp_path):
     assert '{{< param-table scenario="brand-new-scenario" source="krkn-hub" >}}' in krkn_hub_tab
     krknctl_tab = (page / "_tab-krknctl.md").read_text(encoding="utf-8")
     assert '{{< param-table scenario="brand-new-scenario" source="krknctl" >}}' in krknctl_tab
+
+
+def test_scaffold_only_creates_tabs_for_sources_with_data(tmp_path):
+    website = tmp_path / "site"
+    (website / "content/en/docs/scenarios").mkdir(parents=True)
+    _data(website, "rollback", "krknctl")   # only krknctl has data, no env params
+    scaffold_scenario("rollback", website)
+    page = website / "content/en/docs/scenarios/rollback"
+    assert (page / "_tab-krknctl.md").exists()
+    assert not (page / "_tab-krkn-hub.md").exists()
+    idx = (page / "_index.md").read_text(encoding="utf-8")
+    assert 'readfile file="_tab-krknctl.md"' in idx
+    assert 'readfile file="_tab-krkn-hub.md"' not in idx
 
 TAB = """\
 #### Supported parameters

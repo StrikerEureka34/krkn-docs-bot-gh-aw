@@ -58,7 +58,7 @@ def _find_tab(website_root, scenario, source):
 
 # Provisional new-page layout. Confirm the frontmatter format with maintainers
 # before relying on it (weight, description, overview prose are placeholders).
-_INDEX_TEMPLATE = '''---
+_PAGE_HEAD = '''---
 title: __TITLE__
 description:
 weight: 50
@@ -70,34 +70,46 @@ TODO: scenario overview.
 
 </krkn-hub-scenario>
 
-{{< tabpane text=true >}}
-  {{< tab header="**Krkn-hub**" lang="krkn-hub" >}}
-{{< readfile file="_tab-krkn-hub.md" >}}
-  {{< /tab >}}
-  {{< tab header="**Krknctl**" lang="krknctl" >}}
-{{< readfile file="_tab-krknctl.md" >}}
-  {{< /tab >}}
-{{< /tabpane >}}
 '''
 
+_TAB_HEADERS = {"krkn-hub": "**Krkn-hub**", "krknctl": "**Krknctl**"}
 
-def _create_scenario_page(website_root, scenario):
+
+def _tabpane(sources):
+    lines = ["{{< tabpane text=true >}}"]
+    for s in sources:
+        lines += [
+            '  {{< tab header="%s" lang="%s" >}}' % (_TAB_HEADERS[s], s),
+            '{{< readfile file="_tab-%s.md" >}}' % s,
+            "  {{< /tab >}}",
+        ]
+    lines.append("{{< /tabpane >}}")
+    return "\n".join(lines) + "\n"
+
+
+def _create_scenario_page(website_root, scenario, sources):
     d = Path(website_root) / "content/en/docs/scenarios" / scenario
     d.mkdir(parents=True, exist_ok=True)
     title = scenario.replace("-", " ").title()
-    index = _INDEX_TEMPLATE.replace("__TITLE__", title).replace("__SCENARIO__", scenario)
-    (d / "_index.md").write_text(index, encoding="utf-8")
+    head = _PAGE_HEAD.replace("__TITLE__", title).replace("__SCENARIO__", scenario)
+    (d / "_index.md").write_text(head + _tabpane(sources), encoding="utf-8")
     return d
 
 
 def scaffold_scenario(scenario, website_root):
-    """Inject the param-table shortcode into the scenario's krkn-hub and krknctl
-    tab files. If the scenario has no website page yet, create one (index plus
-    stub tabs) first."""
+    """Inject the param-table shortcode into the tab files for the sources that
+    actually have generated data (data/params/<scenario>/<source>.yaml). If the
+    scenario has no website page yet, create one (index plus stub tabs) for just
+    those sources, so a source with no data never gets an empty tab."""
+    root = Path(website_root)
+    sources = [s for s in ("krkn-hub", "krknctl")
+               if (root / "data" / "params" / scenario / f"{s}.yaml").exists()]
+    if not sources:
+        return
     scn_dir = _find_scenario_dir(website_root, scenario)
     if scn_dir is None:
-        scn_dir = _create_scenario_page(website_root, scenario)
-    for source in ("krkn-hub", "krknctl"):
+        scn_dir = _create_scenario_page(website_root, scenario, sources)
+    for source in sources:
         tab = scn_dir / f"_tab-{source}.md"
         if not tab.exists():
             tab.write_text(f'{{{{< param-table scenario="{scenario}" source="{source}" >}}}}\n',
