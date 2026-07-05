@@ -43,6 +43,20 @@ def test_scaffold_does_not_match_dir_name_by_substring(tmp_path):
     scaffold_scenario("node", website)
     assert "param-table" not in tab.read_text(encoding="utf-8")
 
+
+def test_scaffold_creates_page_when_none_exists(tmp_path):
+    website = tmp_path / "site"
+    (website / "content/en/docs/scenarios").mkdir(parents=True)
+    scaffold_scenario("brand-new-scenario", website)
+    page = website / "content/en/docs/scenarios/brand-new-scenario"
+    idx = (page / "_index.md").read_text(encoding="utf-8")
+    assert '<krkn-hub-scenario id="brand-new-scenario">' in idx
+    assert 'readfile file="_tab-krkn-hub.md"' in idx
+    krkn_hub_tab = (page / "_tab-krkn-hub.md").read_text(encoding="utf-8")
+    assert '{{< param-table scenario="brand-new-scenario" source="krkn-hub" >}}' in krkn_hub_tab
+    krknctl_tab = (page / "_tab-krknctl.md").read_text(encoding="utf-8")
+    assert '{{< param-table scenario="brand-new-scenario" source="krknctl" >}}' in krknctl_tab
+
 TAB = """\
 #### Supported parameters
 

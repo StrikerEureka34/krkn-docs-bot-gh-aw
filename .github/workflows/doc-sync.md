@@ -11,7 +11,10 @@ on:
       scenario:
         description: "Scenario name (e.g. node-scenarios)"
         required: false
-  roles: [admin, maintainer, write]
+  # TESTING: allow anyone to run /fix and /resync. Tighten to
+  # [admin, maintainer, write] for production. The comment must still start
+  # with "/fix <scenario>" or "/resync" as its first text.
+  roles: all
   bots: [krkn-docs-bot]
 
 permissions: read-all
@@ -58,7 +61,7 @@ steps:
       git config user.email "krkn-docs-bot@users.noreply.github.com"
       git checkout -b "docs-sync-${{ github.run_number }}"
       git add -A
-      git commit -m "docs-sync: $SCENARIO parameter tables" || echo "no changes to commit"
+      git commit -s -m "docs-sync: $SCENARIO parameter tables" || echo "no changes to commit"
 
 network:
   allowed:
@@ -73,6 +76,9 @@ safe-outputs:
     app-id: ${{ vars.APP_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
   create-pull-request:
+    # Threat detection (a separate ~68k-token LLM scan) runs by default and is
+    # kept ON for the mentor demo. To disable it for this workflow, add:
+    #   threat-detection: false
     target-repo: "StrikerEureka34/website_2"
     draft: true
     title-prefix: "[docs-sync] "
