@@ -33,11 +33,19 @@ steps:
     env:
       DISPATCH_SCENARIO: ${{ github.event.inputs.scenario }}
       COMMENT_BODY: ${{ github.event.comment.body }}
+      PR_NUMBER: ${{ github.event.issue.number }}
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
     run: |
       if [ -n "$DISPATCH_SCENARIO" ]; then
         scenario="$DISPATCH_SCENARIO"
       else
         scenario="$(printf '%s' "$COMMENT_BODY" | awk 'NR==1{print $2}')"
+        # /resync on a PR carries no scenario, derive it from the PR's data/params path
+        if [ -z "$scenario" ] && [ -n "$PR_NUMBER" ]; then
+          scenario="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' 2>/dev/null \
+            | grep -oE 'data/params/[a-z0-9-]+/' | head -1 | cut -d/ -f3)"
+        fi
       fi
       case "$scenario" in
         ''|*[!a-z0-9-]*)
