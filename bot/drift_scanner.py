@@ -116,18 +116,31 @@ def scan(krkn_hub_root, website_root, scenarios=None, hub_url=_DEFAULT_HUB_URL):
 
 # --- issue rendering (Option A, no em dashes) -----------------------------
 
-def _finding_line(f: Finding) -> str:
+def _finding_detail(f: Finding) -> str:
+    """One detail bullet for a single source finding, with its file link."""
     if f.kind == "missing-table":
         n = len(f.new.split(", ")) if f.new else 0
-        return f"no {f.source} table yet, /fix will add {n} params ({f.new})"
+        return f"{f.source}: no table yet, will add {n} params ({f.new}). source: {f.source_file}"
     if f.kind == "missing":
         d = f" (default {f.new})" if f.new is not None else ""
-        return f"missing from {f.source} table: {f.param}{d}"
-    if f.kind == "stale":
-        return f"stale in {f.source} table: {f.param} default {f.old} -> {f.new}"
-    if f.kind == "extra":
-        return f"extra in {f.source} table: {f.param}"
-    return f.kind
+        body = f"{f.source}: missing {f.param}{d}"
+    elif f.kind == "stale":
+        body = f"{f.source}: {f.param} default {f.old} -> {f.new}"
+    elif f.kind == "extra":
+        body = f"{f.source}: extra {f.param}"
+    else:
+        body = f"{f.source}: {f.kind}"
+    return f"{body}. source: {f.source_file}, table: {f.table_file}"
+
+
+def _scenario_summary(fs) -> str:
+    """The single checkbox label for a scenario. /fix acts per scenario and
+    regenerates every source at once, so there is one checkbox per scenario."""
+    if {f.kind for f in fs} == {"missing-table"}:
+        srcs = ", ".join(sorted(f.source for f in fs))
+        return f"no table yet for {srcs}, /fix will generate"
+    n = len(fs)
+    return f"{n} drift item{'s' if n != 1 else ''}, /fix regenerates the tables"
 
 
 def _ticked(prev_body: str) -> set[str]:
@@ -135,8 +148,9 @@ def _ticked(prev_body: str) -> set[str]:
 
 
 def format_report(findings, prev_body="") -> str:
-    """Render Option A. Preserves a ticked checkbox for any finding line that is
-    still present. Emits no em dash characters."""
+    """Render Option A, one checkbox per scenario (the unit /fix acts on) with the
+    per-source findings as detail bullets. Preserves a ticked checkbox whose label
+    is unchanged. Emits no em dash characters."""
     if not findings:
         return "### Docs drift report\n\nNo drift found.\n"
     ticked = _ticked(prev_body)
@@ -148,16 +162,15 @@ def format_report(findings, prev_body="") -> str:
              f"Drift in {n} scenario{'s' if n != 1 else ''}. "
              "Tick a box when handled, or comment `/fix <scenario>` for a draft PR.", ""]
     for scn in sorted(by_scn):
+        fs = by_scn[scn]
+        summary = _scenario_summary(fs)
+        box = "x" if summary in ticked else " "
         lines.append(f"<!-- drift:{scn} -->")
         lines.append(f"#### {scn}")
-        for f in by_scn[scn]:
-            text = _finding_line(f)
-            box = "x" if text in ticked else " "
-            lines.append(f"- [{box}] {text}")
-            lines.append(f"  - source: {f.source_file}")
-            if f.kind != "missing-table":
-                lines.append(f"  - table: {f.table_file}")
-            lines.append(f"  - fix: `/fix {scn}`")
+        lines.append(f"- [{box}] {summary}")
+        for f in fs:
+            lines.append(f"  - {_finding_detail(f)}")
+        lines.append(f"  - fix: `/fix {scn}`")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
