@@ -143,8 +143,20 @@ def _scenario_summary(fs) -> str:
     return f"{n} drift item{'s' if n != 1 else ''}, /fix regenerates the tables"
 
 
-def _ticked(prev_body: str) -> set[str]:
-    return set(re.findall(r"- \[x\] (.+)", prev_body))
+def _ticked_scenarios(prev_body: str) -> set[str]:
+    """Scenario ids whose checkbox was ticked in the previous issue body. Keyed on
+    the <!-- drift:scn --> marker so a tick applies to that scenario only, never to
+    other scenarios that happen to share the same summary text."""
+    ticked, cur = set(), None
+    for line in prev_body.splitlines():
+        m = re.match(r"<!-- drift:(\S+) -->", line)
+        if m:
+            cur = m.group(1)
+        elif cur and line.startswith("- ["):
+            if line.startswith("- [x]"):
+                ticked.add(cur)
+            cur = None
+    return ticked
 
 
 def format_report(findings, prev_body="") -> str:
@@ -153,7 +165,7 @@ def format_report(findings, prev_body="") -> str:
     is unchanged. Emits no em dash characters."""
     if not findings:
         return "### Docs drift report\n\nNo drift found.\n"
-    ticked = _ticked(prev_body)
+    ticked = _ticked_scenarios(prev_body)
     by_scn = defaultdict(list)
     for f in findings:
         by_scn[f.scenario].append(f)
@@ -164,7 +176,7 @@ def format_report(findings, prev_body="") -> str:
     for scn in sorted(by_scn):
         fs = by_scn[scn]
         summary = _scenario_summary(fs)
-        box = "x" if summary in ticked else " "
+        box = "x" if scn in ticked else " "
         lines.append(f"<!-- drift:{scn} -->")
         lines.append(f"#### {scn}")
         lines.append(f"- [{box}] {summary}")

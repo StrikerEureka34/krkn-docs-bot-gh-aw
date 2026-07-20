@@ -73,13 +73,23 @@ def test_format_report_structure_and_no_emdash(tmp_path):
     assert "source:" in body
 
 
-def test_tick_preserved_for_surviving_finding(tmp_path):
-    fs = _hub(tmp_path, env='export FOO=${FOO:="bar"}\n')
-    first = ds.format_report(fs)
-    open_line = next(l for l in first.splitlines() if l.startswith("- [ ]"))
-    prev = first.replace(open_line, open_line.replace("- [ ]", "- [x]"), 1)
-    second = ds.format_report(fs, prev_body=prev)
-    assert open_line.replace("- [ ]", "- [x]") in second
+def _box(body, scenario):
+    import re
+    m = re.search(rf"drift:{scenario} -->\n#### {scenario}\n(- \[.\])", body)
+    return m.group(1)
+
+
+def test_tick_preserved_per_scenario_not_by_shared_text():
+    # two scenarios with identical summary text (both missing a krkn-hub table)
+    a = ds.Finding("alpha", "krkn-hub", "missing-table", new="X", source_file="u", table_file="t")
+    b = ds.Finding("beta", "krkn-hub", "missing-table", new="X", source_file="u", table_file="t")
+    first = ds.format_report([a, b])
+    assert first.count("- [ ]") == 2
+    # tick only alpha
+    prev = first.replace("#### alpha\n- [ ]", "#### alpha\n- [x]", 1)
+    second = ds.format_report([a, b], prev_body=prev)
+    assert _box(second, "alpha") == "- [x]"
+    assert _box(second, "beta") == "- [ ]"   # shared text must NOT tick beta
 
 
 def test_empty_findings_all_clear():
