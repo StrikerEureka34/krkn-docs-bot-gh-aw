@@ -14,6 +14,15 @@ def find_open_drift_issue(repo_name: str, label: str = "docs-drift") -> int | No
     return None
 
 
+def get_open_drift_body(repo_name: str, label: str = "docs-drift") -> str:
+    """Body of the open docs-drift issue, or "" if none. Used to preserve ticked
+    checkboxes across runs."""
+    num = find_open_drift_issue(repo_name, label)
+    if num is None:
+        return ""
+    return _get_github().get_repo(repo_name).get_issue(num).body or ""
+
+
 def create_or_update_drift_issue(repo_name: str, title: str, body: str) -> str:
     """Creates new drift issue or edits existing open one. Returns HTML URL."""
     g = _get_github()
