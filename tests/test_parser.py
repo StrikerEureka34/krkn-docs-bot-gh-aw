@@ -348,3 +348,15 @@ def test_self_reference_stays_a_required_param(tmp_path):
     f.write_text("export FOO=${FOO}\n", encoding="utf-8")
     rec = extract_env_params(f)[0]
     assert rec.name == "FOO" and rec.required is True and rec.default is None
+
+
+def test_krknctl_group_descriptors_are_not_params(tmp_path):
+    """krknctl-input.json carries "type": "Group" descriptor entries alongside the
+    real params. They have a name but no variable, so keying on name must skip them."""
+    f = tmp_path / "krknctl-input.json"
+    f.write_text(
+        '[{"name": "cerberus", "description": "Group containing ...", "type": "Group"},'
+        ' {"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", "group": "cerberus"}]',
+        encoding="utf-8")
+    assert [r.name for r in extract_krknctl_params(f, key="name")] == ["cerberus-enabled"]
+    assert [r.name for r in extract_krknctl_params(f)] == ["CERBERUS_ENABLED"]

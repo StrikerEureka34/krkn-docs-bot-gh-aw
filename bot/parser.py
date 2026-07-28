@@ -159,6 +159,11 @@ def extract_krknctl_params(path: Path, key: str = "variable") -> list[ParamRecor
     for item in data:
         if not isinstance(item, dict) or key not in item:
             continue
+        # The file also carries "type": "Group" descriptor entries, which name a
+        # group and describe it but configure nothing. They have no "variable",
+        # so they only surface when keying on "name".
+        if item.get("type") == "Group":
+            continue
         raw_default = item.get("default")  # JSON null == no default
         default = str(raw_default) if raw_default is not None else None
         allowed = None
