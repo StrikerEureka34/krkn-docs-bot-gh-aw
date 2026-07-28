@@ -316,3 +316,19 @@ def test_adv_krknctl_boolean_and_numeric_json_types(tmp_path):
     recs = extract_krknctl_params(f)
     assert recs[0].default == "600"
     assert recs[0].required is True
+
+
+def test_krknctl_params_carry_their_group(tmp_path):
+    f = tmp_path / "krknctl-input.json"
+    f.write_text('[{"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", '
+                 '"group": "cerberus", "default": "False"}]', encoding="utf-8")
+    rec = extract_krknctl_params(f)[0]
+    assert rec.name == "CERBERUS_ENABLED"   # default key is still "variable"
+    assert rec.group == "cerberus"
+
+
+def test_krknctl_params_can_key_on_the_cli_flag(tmp_path):
+    f = tmp_path / "krknctl-input.json"
+    f.write_text('[{"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", '
+                 '"group": "cerberus"}]', encoding="utf-8")
+    assert extract_krknctl_params(f, key="name")[0].name == "cerberus-enabled"
