@@ -332,3 +332,19 @@ def test_krknctl_params_can_key_on_the_cli_flag(tmp_path):
     f.write_text('[{"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", '
                  '"group": "cerberus"}]', encoding="utf-8")
     assert extract_krknctl_params(f, key="name")[0].name == "cerberus-enabled"
+
+
+def test_alias_export_is_not_a_param(tmp_path):
+    """Root env.sh pattern: export KUBECONFIG=${KRKN_KUBE_CONFIG} re-exports a
+    different variable. That is plumbing, not a knob a user sets."""
+    f = tmp_path / "env.sh"
+    f.write_text("export KUBECONFIG=${KRKN_KUBE_CONFIG}\n", encoding="utf-8")
+    assert extract_env_params(f) == []
+
+
+def test_self_reference_stays_a_required_param(tmp_path):
+    """pvc-scenario pattern: export PVC_NAME=${PVC_NAME} is a real required input."""
+    f = tmp_path / "env.sh"
+    f.write_text("export FOO=${FOO}\n", encoding="utf-8")
+    rec = extract_env_params(f)[0]
+    assert rec.name == "FOO" and rec.required is True and rec.default is None

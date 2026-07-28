@@ -96,6 +96,11 @@ def _parse_export_line(line: str) -> ParamRecord | None:
         return None
 
     if body == "":
+        # export A=${B} re-exports a different variable (KUBECONFIG=${KRKN_KUBE_CONFIG}).
+        # That is plumbing, not a tunable param. export A=${A} is a genuine
+        # required input (pvc-scenario's PVC_NAME) and stays.
+        if name != m.group(1):
+            return None
         # export VAR=${VAR} -- declared but no default: required
         default, required = None, True
     elif body.startswith((":=", ":-")):
