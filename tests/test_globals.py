@@ -1,3 +1,4 @@
+import yaml
 import json
 
 from bot import globals as g
@@ -51,3 +52,32 @@ def test_krknctl_side_is_keyed_on_the_cli_flag(tmp_path):
     ctl, _ = g.build_groups(hub, krkn)
     assert ctl[0].name == "cerberus-enabled"
     assert ctl[0].group == "cerberus"
+
+
+def test_emits_one_file_per_group(tmp_path):
+    hub, krkn = _sources(tmp_path, 'export RETRY_WAIT=${RETRY_WAIT:=120}\n', CTL)
+    web = tmp_path / "web"
+    g.emit(web, hub, krkn)
+    assert (web / "data/params/globals/krknctl-cerberus.yaml").exists()
+    assert (web / "data/params/globals/krkn-hub-other.yaml").exists()
+
+
+def test_existing_description_is_preserved(tmp_path):
+    """The live page has 18 hand-edited descriptions. Regenerating must not lose them."""
+    hub, krkn = _sources(tmp_path, "", CTL)
+    web = tmp_path / "web"
+    out = web / "data/params/globals/krknctl-cerberus.yaml"
+    out.parent.mkdir(parents=True)
+    out.write_text("params:\n  - name: cerberus-enabled\n    description: Hand written.\n",
+                   encoding="utf-8")
+    g.emit(web, hub, krkn)
+    assert yaml.safe_load(out.read_text())["params"][0]["description"] == "Hand written."
+
+
+def test_regenerating_twice_is_byte_identical(tmp_path):
+    hub, krkn = _sources(tmp_path, CERBERUS, CTL)
+    web = tmp_path / "web"
+    g.emit(web, hub, krkn)
+    first = (web / "data/params/globals/krkn-hub-cerberus.yaml").read_text()
+    g.emit(web, hub, krkn)
+    assert (web / "data/params/globals/krkn-hub-cerberus.yaml").read_text() == first
