@@ -1,6 +1,6 @@
 import yaml
 from bot.parser import ParamRecord
-from bot.emitter import emit_data_text
+from bot.emitter import emit_data_text, load_descriptions
 
 
 def test_krkn_hub_omits_absent_optional_fields():
@@ -55,3 +55,14 @@ def test_grouped_krknctl_source_omits_required():
     p = yaml.safe_load(emit_data_text(
         "globals", "krknctl-triggers", recs, {"triggers-mode": "How."}, "r"))["params"][0]
     assert "required" not in p
+
+
+def test_load_descriptions_round_trips_what_the_emitter_wrote(tmp_path):
+    f = tmp_path / "krkn-hub.yaml"
+    f.write_text(emit_data_text("s", "krkn-hub", [ParamRecord(name="A")],
+                                {"A": "An a."}, "r"), encoding="utf-8")
+    assert load_descriptions(f) == {"A": "An a."}
+
+
+def test_load_descriptions_of_a_missing_file_is_empty(tmp_path):
+    assert load_descriptions(tmp_path / "nope.yaml") == {}

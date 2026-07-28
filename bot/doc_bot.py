@@ -3,11 +3,10 @@ import argparse
 import json
 import os
 from pathlib import Path
-import yaml
 
 from bot.parser import extract_env_params, extract_krknctl_params, build_skip_list
 from bot.descriptions import resolve_descriptions
-from bot.emitter import emit_data_file
+from bot.emitter import emit_data_file, load_descriptions
 
 
 # ponytail: the gh-aw Copilot agent writes descriptions for new params, so the
@@ -25,16 +24,9 @@ def _krknctl_desc_map(scn):
     return {r.name: r.description for r in extract_krknctl_params(f) if r.description}
 
 
-def _load_existing(path):
-    if not path.exists():
-        return {}
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return {p["name"]: p.get("description", "") for p in data.get("params", [])}
-
-
 def _emit_one(scenario, source, records, website_root, source_ref):
     out = website_root / "data" / "params" / scenario / f"{source}.yaml"
-    existing = _load_existing(out)
+    existing = load_descriptions(out)
     descs, _ = resolve_descriptions(scenario, records, existing, _no_descriptions)
     emit_data_file(website_root, scenario, source, records, descs, source_ref)
 
