@@ -10,9 +10,13 @@ def _param_dict(rec, description, source):
         d["type"] = rec.type
     if rec.default is not None:
         d["default"] = rec.default
-    if source == "krknctl":
+    # Globals emit under "krknctl-<group>", per-scenario tables under "krknctl".
+    if source.startswith("krknctl"):
         if rec.allowed_values:
             d["possible_values"] = list(rec.allowed_values)
+    # Per-scenario only. Every global param is required=false, so emitting it
+    # would add a sixth column of "False" to a five-column page.
+    if source == "krknctl":
         d["required"] = bool(rec.required)
     return d
 
