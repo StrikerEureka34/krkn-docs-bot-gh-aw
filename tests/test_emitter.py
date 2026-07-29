@@ -48,13 +48,21 @@ def test_grouped_krknctl_source_keeps_possible_values():
     assert p["possible_values"] == ["all", "any"]
 
 
-def test_grouped_krknctl_source_omits_required():
+def test_globals_omit_required():
     """All 72 global params are required=false, so emitting the field would add a
-    sixth column of "False" to a five-column page."""
+    sixth column of "False" to a five-column page. Globals share the plain
+    "krknctl" source name, so the scenario is what tells them apart."""
     recs = [ParamRecord(name="triggers-mode", allowed_values=["all"])]
     p = yaml.safe_load(emit_data_text(
-        "globals", "krknctl-triggers", recs, {"triggers-mode": "How."}, "r"))["params"][0]
+        "globals", "krknctl", recs, {"triggers-mode": "How."}, "r"))["params"][0]
     assert "required" not in p
+
+
+def test_per_scenario_krknctl_still_emits_required():
+    recs = [ParamRecord(name="CLOUD", required=False)]
+    p = yaml.safe_load(emit_data_text(
+        "node-scenarios", "krknctl", recs, {"CLOUD": "c."}, "r"))["params"][0]
+    assert p["required"] is False
 
 
 def test_load_descriptions_round_trips_what_the_emitter_wrote(tmp_path):
@@ -66,3 +74,20 @@ def test_load_descriptions_round_trips_what_the_emitter_wrote(tmp_path):
 
 def test_load_descriptions_of_a_missing_file_is_empty(tmp_path):
     assert load_descriptions(tmp_path / "nope.yaml") == {}
+
+
+def test_group_is_emitted_when_present():
+    """Globals live one file per source, so the group must travel in the data for
+    the shortcode to filter on."""
+    recs = [ParamRecord(name="wait-duration", default="1", group="general")]
+    p = yaml.safe_load(emit_data_text(
+        "globals", "krknctl", recs, {"wait-duration": "Waits."}, "r"))["params"][0]
+    assert p["group"] == "general"
+
+
+def test_group_is_omitted_when_absent():
+    """Per-scenario params have no group, and must not gain an empty key."""
+    p = yaml.safe_load(emit_data_text(
+        "node-scenarios", "krkn-hub", [ParamRecord(name="ACTION")],
+        {"ACTION": "Act."}, "r"))["params"][0]
+    assert "group" not in p

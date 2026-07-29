@@ -54,19 +54,30 @@ def test_krknctl_side_is_keyed_on_the_cli_flag(tmp_path):
     assert ctl[0].group == "cerberus"
 
 
-def test_emits_one_file_per_group(tmp_path):
+def test_emits_one_file_per_source_not_per_group(tmp_path):
+    """Grouping is data, not filenames: a new upstream group must not add a file."""
     hub, krkn = _sources(tmp_path, 'export RETRY_WAIT=${RETRY_WAIT:=120}\n', CTL)
     web = tmp_path / "web"
     g.emit(web, hub, krkn)
-    assert (web / "data/params/globals/krknctl-cerberus.yaml").exists()
-    assert (web / "data/params/globals/krkn-hub-other.yaml").exists()
+    d = web / "data/params/globals"
+    assert sorted(p.name for p in d.iterdir()) == ["krkn-hub.yaml", "krknctl.yaml"]
+
+
+def test_every_param_carries_its_group(tmp_path):
+    hub, krkn = _sources(tmp_path, 'export RETRY_WAIT=${RETRY_WAIT:=120}\n', CTL)
+    web = tmp_path / "web"
+    g.emit(web, hub, krkn)
+    rows = yaml.safe_load((web / "data/params/globals/krkn-hub.yaml").read_text())["params"]
+    assert {r["name"]: r["group"] for r in rows} == {"RETRY_WAIT": "other"}
+    ctl = yaml.safe_load((web / "data/params/globals/krknctl.yaml").read_text())["params"]
+    assert ctl[0]["group"] == "cerberus"
 
 
 def test_existing_description_is_preserved(tmp_path):
     """The live page has 18 hand-edited descriptions. Regenerating must not lose them."""
     hub, krkn = _sources(tmp_path, "", CTL)
     web = tmp_path / "web"
-    out = web / "data/params/globals/krknctl-cerberus.yaml"
+    out = web / "data/params/globals/krknctl.yaml"
     out.parent.mkdir(parents=True)
     out.write_text("params:\n  - name: cerberus-enabled\n    description: Hand written.\n",
                    encoding="utf-8")
@@ -78,6 +89,6 @@ def test_regenerating_twice_is_byte_identical(tmp_path):
     hub, krkn = _sources(tmp_path, CERBERUS, CTL)
     web = tmp_path / "web"
     g.emit(web, hub, krkn)
-    first = (web / "data/params/globals/krkn-hub-cerberus.yaml").read_text()
+    first = (web / "data/params/globals/krkn-hub.yaml").read_text()
     g.emit(web, hub, krkn)
-    assert (web / "data/params/globals/krkn-hub-cerberus.yaml").read_text() == first
+    assert (web / "data/params/globals/krkn-hub.yaml").read_text() == first

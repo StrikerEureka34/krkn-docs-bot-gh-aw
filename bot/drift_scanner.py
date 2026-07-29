@@ -62,6 +62,15 @@ def _source_params(scn_dir: Path, source: str, filename: str, skip: set[str]):
     return {r.name: r for r in recs if r.name not in skip}
 
 
+def _table_rows(table_path: Path):
+    """Raw param rows from a committed data file, or None if it does not exist.
+    Globals keep every group in one file, so callers slice these by row["group"]."""
+    if not table_path.exists():
+        return None
+    data = yaml.safe_load(table_path.read_text(encoding="utf-8")) or {}
+    return data.get("params", [])
+
+
 def _table_params(table_path: Path):
     """name -> default (str|None) from a committed data/params yaml, or None if the
     file does not exist."""
@@ -125,10 +134,17 @@ def global_findings(krkn_hub_root, krkn_root, website_root,
         by_group = defaultdict(list)
         for r in records:
             by_group[r.group or OTHER_GROUP].append(r)
+
+        # One file per source now, with the group carried per row, so read it once
+        # and slice it per group rather than opening a file per group.
+        table_file = f"data/params/{GLOBAL_SCENARIO}/{prefix}.yaml"
+        all_rows = _table_rows(Path(website_root) / table_file)
+
         for group, rs in sorted(by_group.items()):
             source = f"{prefix}-{group}"
-            table_file = f"data/params/{GLOBAL_SCENARIO}/{source}.yaml"
-            table = _table_params(Path(website_root) / table_file)
+            table = None if all_rows is None else {
+                r["name"]: (None if r.get("default") is None else str(r["default"]))
+                for r in all_rows if r.get("group") == group}
             src = {r.name: r for r in rs}
             if table is None:
                 findings.append(Finding(GLOBAL_SCENARIO, source, "missing-table",

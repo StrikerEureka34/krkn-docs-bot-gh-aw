@@ -59,19 +59,23 @@ def _no_descriptions(scenario, names):
 
 
 def emit(website_root, krkn_hub_root, krkn_root, source_ref="HEAD"):
-    """Write data/params/globals/<source>-<group>.yaml for every group. Returns the
-    paths written. Existing descriptions win, so hand-edited wording on the page
-    survives regeneration."""
+    """Write data/params/globals/<source>.yaml, one file per source. Returns the
+    paths written.
+
+    Every param carries its group, and the page's shortcode filters on it. Keeping
+    the grouping in the data rather than in filenames means a new upstream group
+    costs no new file. Existing descriptions win, so hand-edited wording on the
+    page survives regeneration."""
     ctl, env = build_groups(krkn_hub_root, krkn_root)
     written = []
     for source, records in (("krknctl", ctl), ("krkn-hub", env)):
-        for group, rs in sorted(_by_group(records).items()):
-            name = f"{source}-{group}"
-            existing = load_descriptions(
-                Path(website_root) / "data/params" / GLOBAL_SCENARIO / f"{name}.yaml")
-            descs, _ = resolve_descriptions(GLOBAL_SCENARIO, rs, existing, _no_descriptions)
-            written.append(
-                emit_data_file(website_root, GLOBAL_SCENARIO, name, rs, descs, source_ref))
+        # Group order is stable so regenerating twice is byte identical.
+        ordered = [r for _, rs in sorted(_by_group(records).items()) for r in rs]
+        existing = load_descriptions(
+            Path(website_root) / "data/params" / GLOBAL_SCENARIO / f"{source}.yaml")
+        descs, _ = resolve_descriptions(GLOBAL_SCENARIO, ordered, existing, _no_descriptions)
+        written.append(
+            emit_data_file(website_root, GLOBAL_SCENARIO, source, ordered, descs, source_ref))
     return written
 
 

@@ -136,10 +136,12 @@ def test_global_stale_default_is_reported(tmp_path):
     web = tmp_path / "web"
     d = web / "data/params/globals"
     d.mkdir(parents=True)
-    (d / "krknctl-cerberus.yaml").write_text(
-        "params:\n  - name: cerberus-enabled\n    default: True\n", encoding="utf-8")
-    (d / "krkn-hub-cerberus.yaml").write_text(
-        "params:\n  - name: CERBERUS_ENABLED\n    default: False\n", encoding="utf-8")
+    (d / "krknctl.yaml").write_text(
+        "params:\n  - name: cerberus-enabled\n    group: cerberus\n    default: True\n",
+        encoding="utf-8")
+    (d / "krkn-hub.yaml").write_text(
+        "params:\n  - name: CERBERUS_ENABLED\n    group: cerberus\n    default: False\n",
+        encoding="utf-8")
     fs = ds.global_findings(hub, krkn, web)
     assert any(f.kind == "stale" and f.param == "cerberus-enabled"
                and f.old == "True" and f.new == "False" for f in fs)
@@ -184,3 +186,20 @@ def test_global_findings_honour_the_fork_urls(tmp_path):
                             hub_url="https://github.com/fork/krkn-hub/blob/main",
                             krkn_url="https://github.com/fork/krkn/blob/main")
     assert all("fork/" in f.source_file for f in fs), "must not hardcode krkn-chaos"
+
+
+def test_a_group_missing_from_a_shared_file_is_still_missing_table(tmp_path):
+    """One file per source: a group with no rows in it must read as missing-table,
+    not as an empty in-sync table."""
+    hub, krkn = _globals_sources(tmp_path)
+    web = tmp_path / "web"
+    d = web / "data/params/globals"
+    d.mkdir(parents=True)
+    # file exists but holds only an unrelated group
+    (d / "krknctl.yaml").write_text(
+        "params:\n  - name: other-thing\n    group: telemetry\n    default: x\n",
+        encoding="utf-8")
+    (d / "krkn-hub.yaml").write_text("params: []\n", encoding="utf-8")
+    fs = ds.global_findings(hub, krkn, web)
+    ctl = [f for f in fs if f.source == "krknctl-cerberus"]
+    assert [f.kind for f in ctl] == ["missing"], "cerberus rows absent -> reported"
