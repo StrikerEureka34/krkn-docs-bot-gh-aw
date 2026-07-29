@@ -186,7 +186,10 @@ def build_skip_list(krkn_hub_root, krkn_root) -> set[str]:
 
     Read from the sources, not from all-scenario-env.md. That page's table is
     generated now, so its parameter names no longer appear in the markdown and
-    grepping it would return an almost empty set."""
+    grepping it would return an almost empty set.
+
+    A missing source degrades this silently, so CLI entry points must call
+    require_sources() first. See its docstring for what silence costs."""
     names: set[str] = set()
     env = Path(krkn_hub_root) / "env.sh"
     if env.exists():
@@ -195,3 +198,18 @@ def build_skip_list(krkn_hub_root, krkn_root) -> set[str]:
     if ctl.exists():
         names |= {r.name for r in extract_krknctl_params(ctl)}
     return names | {"SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"}
+
+
+def require_sources(krkn_hub_root, krkn_root) -> None:
+    """Fail loudly when a global parameter source is missing.
+
+    Call this at CLI boundaries. build_skip_list stays tolerant so unit tests can
+    use minimal fixtures, but in CI a missing source is silent corruption: with
+    both paths wrong the skip list returns 3 names instead of 81, and 78 global
+    params leak into every per-scenario table of the resulting draft PR."""
+    for path, hint in ((Path(krkn_hub_root) / "env.sh", "KRKN_HUB_PATH"),
+                       (Path(krkn_root) / "containers/krknctl-input.json", "KRKN_PATH")):
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Global parameter source not found: {path}. "
+                f"Set {hint} to the repo root, or clone it in the workflow.")

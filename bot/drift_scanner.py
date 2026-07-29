@@ -18,7 +18,8 @@ from pathlib import Path
 
 import yaml
 
-from bot.parser import extract_env_params, extract_krknctl_params, build_skip_list
+from bot.parser import (extract_env_params, extract_krknctl_params,
+                        build_skip_list, require_sources)
 
 _MARKER_RE = re.compile(r'<krkn-hub-scenario\s+id="([^"]+)"')
 _SOURCES = (("krkn-hub", "env.sh"), ("krknctl", "krknctl-input.json"))
@@ -247,6 +248,7 @@ def main() -> None:
     ap.add_argument("--krkn", default="krkn", help="Path to krkn repo root (global params)")
     args = ap.parse_args()
 
+    require_sources(args.krkn_hub, args.krkn)
     findings = scan(args.krkn_hub, args.website, hub_url=args.hub_url, krkn_root=args.krkn)
     findings += global_findings(args.krkn_hub, args.krkn, args.website)
 

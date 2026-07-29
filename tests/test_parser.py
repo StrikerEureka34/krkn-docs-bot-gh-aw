@@ -33,9 +33,29 @@ def test_build_skip_list(tmp_path):
     assert "IMAGE" in skip
 
 
-def test_build_skip_list_tolerates_missing_sources(tmp_path):
-    assert build_skip_list(tmp_path / "nope", tmp_path / "nada") == {
-        "SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"}
+def test_require_sources_fails_loudly_on_a_missing_source(tmp_path):
+    """A missing source degrades the skip list silently and leaks 78 global params
+    into every per-scenario table, so CLI boundaries must refuse to run."""
+    import pytest
+    from bot.parser import require_sources
+    hub = tmp_path / "hub"
+    hub.mkdir()
+    (hub / "env.sh").write_text("export A=${A:=1}\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="KRKN_PATH"):
+        require_sources(hub, tmp_path / "no-krkn")
+    with pytest.raises(FileNotFoundError, match="KRKN_HUB_PATH"):
+        require_sources(tmp_path / "no-hub", tmp_path / "no-krkn")
+
+
+def test_require_sources_passes_when_both_exist(tmp_path):
+    from bot.parser import require_sources
+    hub = tmp_path / "hub"
+    hub.mkdir()
+    (hub / "env.sh").write_text("export A=${A:=1}\n", encoding="utf-8")
+    c = tmp_path / "krkn" / "containers"
+    c.mkdir(parents=True)
+    (c / "krknctl-input.json").write_text("[]", encoding="utf-8")
+    require_sources(hub, tmp_path / "krkn")   # must not raise
 
 
 

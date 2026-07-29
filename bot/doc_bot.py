@@ -4,7 +4,8 @@ import json
 import os
 from pathlib import Path
 
-from bot.parser import extract_env_params, extract_krknctl_params, build_skip_list
+from bot.parser import (extract_env_params, extract_krknctl_params,
+                        build_skip_list, require_sources)
 from bot.descriptions import resolve_descriptions
 from bot.emitter import emit_data_file, load_descriptions
 
@@ -70,6 +71,7 @@ def main():
     if not scenario:
         p.error("a scenario is required (via --scenario or payload)")
 
+    require_sources(krkn_hub_root, krkn_root)
     run(scenario, krkn_hub_root, website_root, krkn_root)
     if args.scaffold:
         from bot.scaffold import scaffold_scenario
