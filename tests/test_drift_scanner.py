@@ -150,3 +150,37 @@ def test_globals_get_their_own_checkbox(tmp_path):
     body = ds.format_report(ds.global_findings(hub, krkn, tmp_path / "web"))
     assert "#### globals" in body
     assert "/fix globals" in body
+
+
+# --- readability and confidence -------------------------------------------
+
+def _mkf(kind, source="krknctl-telemetry", param=None, new=None, old=None):
+    return ds.Finding("globals", source, kind, param, old, new, "u", "t")
+
+
+def test_only_derived_kinds_are_marked_safe():
+    fs = [_mkf("missing-table", new="a, b"), _mkf("stale", param="x", old="1", new="2")]
+    assert "Safe to regenerate" in ds._scenario_summary(fs)
+
+
+def test_a_removed_param_is_marked_as_needing_a_look():
+    """extra is the only kind where /fix deletes a documented row."""
+    fs = [_mkf("stale", param="x", old="1", new="2"), _mkf("extra", param="GONE", old="9")]
+    s = ds._scenario_summary(fs)
+    assert "Needs a look" in s and "1 param" in s
+    assert "Safe to regenerate" not in s
+
+
+def test_long_group_lists_are_collapsed_not_inlined():
+    fs = [_mkf("missing-table", source=f"krknctl-g{i}", new="a, b, c") for i in range(9)]
+    body = ds.format_report(fs)
+    assert "<details>" in body, "long lists must collapse"
+    assert body.count("krknctl-g0") >= 1
+
+
+def test_global_findings_honour_the_fork_urls(tmp_path):
+    hub, krkn = _globals_sources(tmp_path)
+    fs = ds.global_findings(hub, krkn, tmp_path / "web",
+                            hub_url="https://github.com/fork/krkn-hub/blob/main",
+                            krkn_url="https://github.com/fork/krkn/blob/main")
+    assert all("fork/" in f.source_file for f in fs), "must not hardcode krkn-chaos"

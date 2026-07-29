@@ -107,7 +107,8 @@ def scenario_findings(scenario, krkn_hub_root, website_root, hub_url=_DEFAULT_HU
     return findings
 
 
-def global_findings(krkn_hub_root, krkn_root, website_root):
+def global_findings(krkn_hub_root, krkn_root, website_root,
+                    hub_url=_DEFAULT_HUB_URL, krkn_url=_KRKN_URL):
     """Drift in the two global parameter pages, reported under the scenario id
     "globals" so a single `/fix globals` covers every group.
 
@@ -118,8 +119,8 @@ def global_findings(krkn_hub_root, krkn_root, website_root):
     ctl, env = build_groups(krkn_hub_root, krkn_root)
     findings = []
     for prefix, records, source_file in (
-        ("krknctl", ctl, f"{_KRKN_URL}/containers/krknctl-input.json"),
-        ("krkn-hub", env, f"{_DEFAULT_HUB_URL}/env.sh"),
+        ("krknctl", ctl, f"{krkn_url}/containers/krknctl-input.json"),
+        ("krkn-hub", env, f"{hub_url}/env.sh"),
     ):
         by_group = defaultdict(list)
         for r in records:
@@ -183,16 +184,55 @@ def _finding_detail(f: Finding) -> str:
 
 def _scenario_summary(fs) -> str:
     """The single checkbox label for a scenario. /fix acts per scenario and
-    regenerates every source at once, so there is one checkbox per scenario."""
+    regenerates every source at once, so there is one checkbox per scenario.
+
+    Ends with a confidence marker. Everything except "extra" is derived from the
+    source and loses nothing, so it is safe to regenerate. "extra" is the only
+    kind where /fix deletes a documented row, so it needs a human."""
+    extras = [f for f in fs if f.kind == "extra"]
     if {f.kind for f in fs} == {"missing-table"}:
-        # Globals span 19 groups, so name them only when the list stays readable.
+        n = sum(len(f.new.split(", ")) for f in fs if f.new)
         if len(fs) > 3:
-            n = sum(len(f.new.split(", ")) for f in fs if f.new)
-            return f"no tables yet for {len(fs)} groups, {n} params, /fix will generate"
-        srcs = ", ".join(sorted(f.source for f in fs))
-        return f"no table yet for {srcs}, /fix will generate"
-    n = len(fs)
-    return f"{n} drift item{'s' if n != 1 else ''}, /fix regenerates the tables"
+            what = f"{len(fs)} tables missing, {n} params"
+        else:
+            what = f"no table yet for {', '.join(sorted(f.source for f in fs))}"
+    else:
+        n = len(fs)
+        what = f"{n} drift item{'s' if n != 1 else ''}"
+
+    if extras:
+        p = f"{len(extras)} param{'s' if len(extras) != 1 else ''}"
+        return f"{what}. **Needs a look**: {p} would be removed"
+    return f"{what}. Safe to regenerate"
+
+
+def _detail_block(fs) -> list[str]:
+    """Detail lines for one scenario. Past a few findings the per-source lists get
+    unreadable in an issue, so they collapse into a <details> table and each source
+    file is linked once instead of on every row."""
+    if len(fs) <= 3:
+        return [f"  - {_finding_detail(f)}" for f in fs]
+
+    by_file = {}
+    for f in fs:
+        by_file.setdefault(f.source_file, []).append(f)
+
+    lines = ["", "<details>", f"<summary>{len(fs)} sources, click to expand</summary>", ""]
+    for source_file, group in sorted(by_file.items()):
+        lines += [f"Source: {source_file}", "", "| Group | Params | Names |", "| --- | --- | --- |"]
+        for f in sorted(group, key=lambda x: x.source):
+            if f.kind == "missing-table":
+                names = f.new or ""
+                count = len(names.split(", ")) if names else 0
+            else:
+                names = f.param or ""
+                count = 1
+            if len(names) > 90:
+                names = names[:90].rsplit(", ", 1)[0] + ", ..."
+            lines.append(f"| {f.source} | {count} | {names} |")
+        lines.append("")
+    lines += ["</details>", ""]
+    return lines
 
 
 def _ticked_scenarios(prev_body: str) -> set[str]:
@@ -231,10 +271,8 @@ def format_report(findings, prev_body="") -> str:
         box = "x" if scn in ticked else " "
         lines.append(f"<!-- drift:{scn} -->")
         lines.append(f"#### {scn}")
-        lines.append(f"- [{box}] {summary}")
-        for f in fs:
-            lines.append(f"  - {_finding_detail(f)}")
-        lines.append(f"  - fix: `/fix {scn}`")
+        lines.append(f"- [{box}] {summary}. Fix with `/fix {scn}`")
+        lines.extend(_detail_block(fs))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -246,11 +284,13 @@ def main() -> None:
     ap.add_argument("--repo", help="owner/repo to open the rolling drift issue on")
     ap.add_argument("--hub-url", default=_DEFAULT_HUB_URL, help="krkn-hub blob base URL")
     ap.add_argument("--krkn", default="krkn", help="Path to krkn repo root (global params)")
+    ap.add_argument("--krkn-url", default=_KRKN_URL, help="krkn blob base URL")
     args = ap.parse_args()
 
     require_sources(args.krkn_hub, args.krkn)
     findings = scan(args.krkn_hub, args.website, hub_url=args.hub_url, krkn_root=args.krkn)
-    findings += global_findings(args.krkn_hub, args.krkn, args.website)
+    findings += global_findings(args.krkn_hub, args.krkn, args.website,
+                                hub_url=args.hub_url, krkn_url=args.krkn_url)
 
     if not args.repo:
         print(format_report(findings))
