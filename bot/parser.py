@@ -21,9 +21,6 @@ class ParamRecord:
 EXPORT_LINE_RE = re.compile(r'^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$')
 VAR_NAME_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 
-# Backtick-wrapped uppercase identifiers in markdown tables
-GLOBAL_PARAM_RE = re.compile(r'`([A-Z][A-Z0-9_]+)`')
-
 
 def _strip_quotes(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
@@ -184,9 +181,17 @@ def extract_krknctl_params(path: Path, key: str = "variable") -> list[ParamRecor
     return records
 
 
-def build_skip_list(all_scenario_env_path: Path) -> set[str]:
-    """Extract global params shared across all scenarios from all-scenario-env.md."""
-    text = all_scenario_env_path.read_text()
-    found = set(GLOBAL_PARAM_RE.findall(text))
-    found |= {"SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"}
-    return found
+def build_skip_list(krkn_hub_root, krkn_root) -> set[str]:
+    """Global params, which per-scenario tables must not repeat.
+
+    Read from the sources, not from all-scenario-env.md. That page's table is
+    generated now, so its parameter names no longer appear in the markdown and
+    grepping it would return an almost empty set."""
+    names: set[str] = set()
+    env = Path(krkn_hub_root) / "env.sh"
+    if env.exists():
+        names |= {r.name for r in extract_env_params(env)}
+    ctl = Path(krkn_root) / "containers/krknctl-input.json"
+    if ctl.exists():
+        names |= {r.name for r in extract_krknctl_params(ctl)}
+    return names | {"SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"}

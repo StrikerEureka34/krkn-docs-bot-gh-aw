@@ -56,12 +56,15 @@ def test_no_drift_when_table_matches(tmp_path):
 
 
 def test_skips_global_params(tmp_path):
-    hub, web = _mk(tmp_path, env='export WAIT_DURATION=${WAIT_DURATION:="0"}\n')
-    # skip list comes from all-scenario-env.md; simulate it containing WAIT_DURATION
-    md = web / "content/en/docs/scenarios/all-scenario-env.md"
-    md.write_text("`WAIT_DURATION`\n", encoding="utf-8")
-    fs = ds.scenario_findings("demo", hub, web)
-    assert all(f.param != "WAIT_DURATION" for f in fs)
+    """A param declared in the krkn-hub ROOT env.sh is global, so a per-scenario
+    table must not repeat it. The skip list reads the source, not the docs page."""
+    hub, web = _mk(tmp_path,
+                   env='export WAIT_DURATION=${WAIT_DURATION:="0"}\nexport LOCAL=${LOCAL:="1"}\n',
+                   table="params:\n  - name: LOCAL\n    default: '1'\n")
+    (hub / "env.sh").write_text('export WAIT_DURATION=${WAIT_DURATION:="60"}\n', encoding="utf-8")
+    fs = ds.scenario_findings("demo", hub, web, krkn_root=tmp_path / "no-krkn")
+    assert all(f.param != "WAIT_DURATION" for f in fs), "global leaked into a scenario table"
+    assert [f.kind for f in fs if f.source == "krkn-hub"] == [], "LOCAL should be in sync"
 
 
 def test_format_report_structure_and_no_emdash(tmp_path):

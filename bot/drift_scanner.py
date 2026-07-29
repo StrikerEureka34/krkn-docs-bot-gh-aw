@@ -47,9 +47,9 @@ def find_scenarios(website_root) -> list[str]:
     return sorted(ids)
 
 
-def _skip(website_root) -> set[str]:
-    f = Path(website_root) / "content/en/docs/scenarios/all-scenario-env.md"
-    return build_skip_list(f) if f.exists() else set()
+def _skip(krkn_hub_root, krkn_root) -> set[str]:
+    """Global params come from the sources now, not from all-scenario-env.md."""
+    return build_skip_list(krkn_hub_root, krkn_root)
 
 
 def _source_params(scn_dir: Path, source: str, filename: str, skip: set[str]):
@@ -74,10 +74,11 @@ def _table_params(table_path: Path):
     return out
 
 
-def scenario_findings(scenario, krkn_hub_root, website_root, hub_url=_DEFAULT_HUB_URL):
+def scenario_findings(scenario, krkn_hub_root, website_root, hub_url=_DEFAULT_HUB_URL,
+                      krkn_root="krkn"):
     krkn_hub_root, website_root = Path(krkn_hub_root), Path(website_root)
     scn_dir = krkn_hub_root / scenario
-    skip = _skip(website_root)
+    skip = _skip(krkn_hub_root, krkn_root)
     findings = []
     for source, filename in _SOURCES:
         src = _source_params(scn_dir, source, filename, skip)
@@ -148,13 +149,15 @@ def global_findings(krkn_hub_root, krkn_root, website_root):
     return findings
 
 
-def scan(krkn_hub_root, website_root, scenarios=None, hub_url=_DEFAULT_HUB_URL):
+def scan(krkn_hub_root, website_root, scenarios=None, hub_url=_DEFAULT_HUB_URL,
+         krkn_root="krkn"):
     if scenarios is None:
         scenarios = find_scenarios(website_root)
     findings = []
     for s in scenarios:
         if (Path(krkn_hub_root) / s).is_dir():
-            findings.extend(scenario_findings(s, krkn_hub_root, website_root, hub_url))
+            findings.extend(scenario_findings(s, krkn_hub_root, website_root, hub_url,
+                                              krkn_root))
     return findings
 
 
@@ -241,9 +244,11 @@ def main() -> None:
     ap.add_argument("--website", required=True, help="Path to website repo root")
     ap.add_argument("--repo", help="owner/repo to open the rolling drift issue on")
     ap.add_argument("--hub-url", default=_DEFAULT_HUB_URL, help="krkn-hub blob base URL")
+    ap.add_argument("--krkn", default="krkn", help="Path to krkn repo root (global params)")
     args = ap.parse_args()
 
-    findings = scan(args.krkn_hub, args.website, hub_url=args.hub_url)
+    findings = scan(args.krkn_hub, args.website, hub_url=args.hub_url, krkn_root=args.krkn)
+    findings += global_findings(args.krkn_hub, args.krkn, args.website)
 
     if not args.repo:
         print(format_report(findings))

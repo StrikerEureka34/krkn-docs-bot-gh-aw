@@ -15,14 +15,27 @@ def _records(tmp_path, text):
 
 
 def test_build_skip_list(tmp_path):
-    md = tmp_path / "all-scenario-env.md"
-    md.write_text("| `WAIT_DURATION` | 60 |\n| `KUBECONFIG` | path |\n")
-    skip = build_skip_list(md)
-    assert "WAIT_DURATION" in skip
-    assert "KUBECONFIG" in skip
-    assert "SCENARIO_TYPE" in skip    # hardcoded fallback always present
+    """Global params come from the sources, not from all-scenario-env.md. That page
+    is generated now, so its param names no longer appear in the markdown."""
+    hub = tmp_path / "hub"
+    hub.mkdir()
+    (hub / "env.sh").write_text('export WAIT_DURATION=${WAIT_DURATION:=60}\n', encoding="utf-8")
+    c = tmp_path / "krkn" / "containers"
+    c.mkdir(parents=True)
+    (c / "krknctl-input.json").write_text(
+        '[{"name": "prometheus-url", "variable": "PROMETHEUS_URL", "group": "prometheus"}]',
+        encoding="utf-8")
+    skip = build_skip_list(hub, tmp_path / "krkn")
+    assert "WAIT_DURATION" in skip     # from env.sh
+    assert "PROMETHEUS_URL" in skip    # from krknctl-input.json
+    assert "SCENARIO_TYPE" in skip     # hardcoded fallback always present
     assert "SCENARIO_FILE" in skip
     assert "IMAGE" in skip
+
+
+def test_build_skip_list_tolerates_missing_sources(tmp_path):
+    assert build_skip_list(tmp_path / "nope", tmp_path / "nada") == {
+        "SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"}
 
 
 
