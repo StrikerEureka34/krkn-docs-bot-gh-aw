@@ -73,16 +73,18 @@ def test_every_param_carries_its_group(tmp_path):
     assert ctl[0]["group"] == "cerberus"
 
 
-def test_existing_description_is_preserved(tmp_path):
-    """The live page has 18 hand-edited descriptions. Regenerating must not lose them."""
+def test_a_source_description_change_reaches_the_data_file(tmp_path):
+    """Superseded: this used to assert the committed file beat the source, so
+    improving the wording upstream changed nothing downstream. Source wins now.
+    Better wording belongs in krknctl-input.json, where every consumer gets it."""
     hub, krkn = _sources(tmp_path, "", CTL)
     web = tmp_path / "web"
     out = web / "data/params/globals/krknctl.yaml"
     out.parent.mkdir(parents=True)
-    out.write_text("params:\n  - name: cerberus-enabled\n    description: Hand written.\n",
+    out.write_text("params:\n  - name: cerberus-enabled\n    description: stale wording\n",
                    encoding="utf-8")
     g.emit(web, hub, krkn)
-    assert yaml.safe_load(out.read_text())["params"][0]["description"] == "Hand written."
+    assert yaml.safe_load(out.read_text())["params"][0]["description"] == "Enables Cerberus Support"
 
 
 def test_regenerating_twice_is_byte_identical(tmp_path):

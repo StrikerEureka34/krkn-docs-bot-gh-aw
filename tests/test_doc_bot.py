@@ -30,7 +30,7 @@ def test_env_description_filled_from_krknctl_json(tmp_path):
     assert _params(website, "node-scenarios")["FOO"]["description"] == "controls the foo behaviour"
 
 
-def test_env_only_param_still_gets_placeholder(tmp_path):
+def test_env_only_param_is_left_blank_not_papered_over(tmp_path):
     hub = tmp_path / "hub"
     scn = hub / "node-scenarios"
     scn.mkdir(parents=True)
@@ -38,10 +38,12 @@ def test_env_only_param_still_gets_placeholder(tmp_path):
     (scn / "krknctl-input.json").write_text('[{"variable": "OTHER", "description": "x"}]', encoding="utf-8")
     website = _site(tmp_path)
     doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
-    assert _params(website, "node-scenarios")["BAR"]["description"] == "Configures bar."
+    # Was "Configures bar." That reads as finished while saying nothing, hiding
+    # the gap. Blank shows a human there is work to do.
+    assert _params(website, "node-scenarios")["BAR"]["description"] == ""
 
 
-def test_existing_description_wins_over_krknctl_join(tmp_path):
+def test_source_wins_over_the_committed_file(tmp_path):
     hub = tmp_path / "hub"
     scn = hub / "node-scenarios"
     scn.mkdir(parents=True)
@@ -56,7 +58,9 @@ def test_existing_description_wins_over_krknctl_join(tmp_path):
         "params:\n- name: FOO\n  description: hand written desc\n  default: x\n",
         encoding="utf-8")
     doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
-    assert _params(website, "node-scenarios")["FOO"]["description"] == "hand written desc"
+    # Was "hand written desc". The committed file is stamped "Do not edit by
+    # hand", so letting it beat the source froze descriptions at first generation.
+    assert _params(website, "node-scenarios")["FOO"]["description"] == "from json"
 
 
 def _write_env(scn_dir):
@@ -77,8 +81,9 @@ def test_emit_then_reemit_is_byte_identical(tmp_path):
     out = website / "data/params/node-scenarios/krkn-hub.yaml"
     first = out.read_text(encoding="utf-8")
 
-    # Second run: every param already has a description in the file, so the
-    # resolver must not be consulted again and the output stays byte-identical.
-    with patch("bot.doc_bot._no_descriptions", side_effect=AssertionError("must not run")):
-        doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    # Second run must produce identical bytes. A param nothing describes is now
+    # left blank rather than given a placeholder, and blank is falsy, so it stays
+    # in the residual list and is offered to the resolver on every run. That is
+    # fine: the resolver is a no-op in production and the output is unchanged.
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
     assert out.read_text(encoding="utf-8") == first
