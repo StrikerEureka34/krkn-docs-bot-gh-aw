@@ -109,8 +109,11 @@ def inject_global_shortcodes(text, source, name_to_group):
             report.append(f"group {group} split across {claims[group]} sections, "
                           "left alone to avoid showing params twice")
             continue
+        # krknctl stores bare flag names but a reader types --telemetry-enabled.
+        # krkn-hub params are env vars and take no prefix.
+        prefix = ' prefix="--"' if source == "krknctl" else ""
         call = (f'{{{{< param-table scenario="{GLOBAL_SCENARIO}" '
-                f'source="{source}" group="{group}" >}}}}\n')
+                f'source="{source}" group="{group}"{prefix} >}}}}\n')
         edits.append((header, end, call))
         report.append(f"{group}: replaced {len(names)} rows")
 

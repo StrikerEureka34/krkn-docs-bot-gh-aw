@@ -39,8 +39,8 @@ Parameter | Description | Default
 
 def test_replaces_a_table_with_a_group_filtered_call():
     out, report = inject_global_shortcodes(KRKNCTL_PAGE, "krknctl", CTL)
-    assert '{{< param-table scenario="globals" source="krknctl" group="cerberus" >}}' in out
-    assert '{{< param-table scenario="globals" source="krknctl" group="telemetry" >}}' in out
+    assert '{{< param-table scenario="globals" source="krknctl" group="cerberus" prefix="--" >}}' in out
+    assert '{{< param-table scenario="globals" source="krknctl" group="telemetry" prefix="--" >}}' in out
     assert "`--cerberus-enabled`" not in out, "table body must be gone"
 
 
@@ -108,3 +108,15 @@ def test_a_group_split_across_sections_injects_neither():
     assert "param-table" not in out, "a split group must not be injected at all"
     assert "`--krkn-kubeconfig`" in out and "`--uuid`" in out
     assert any("split across" in r for r in report), report
+
+
+def test_krknctl_calls_carry_the_flag_prefix():
+    """The source stores bare flag names but a reader types --telemetry-enabled."""
+    out, _ = inject_global_shortcodes(KRKNCTL_PAGE, "krknctl", CTL)
+    assert 'group="cerberus" prefix="--"' in out
+
+
+def test_krkn_hub_calls_carry_no_prefix():
+    """krkn-hub params are env vars, used as CERBERUS_ENABLED=... not --cerberus."""
+    out, _ = inject_global_shortcodes(HUB_PAGE, "krkn-hub", HUB)
+    assert "prefix=" not in out

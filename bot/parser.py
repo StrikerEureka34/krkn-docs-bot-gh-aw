@@ -133,7 +133,28 @@ def extract_env_params(path: Path) -> list[ParamRecord]:
         rec = _parse_export_line(line)
         if rec is not None and rec.name not in records:
             records[rec.name] = rec
+    _resolve_references(records)
     return list(records.values())
+
+
+_REF_RE = re.compile(r'^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$')
+
+
+def _resolve_references(records: dict) -> None:
+    """Replace a default that is only a reference to another variable.
+
+    env.sh has RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}. Printing the
+    literal "$ALERTS_PATH" into a docs table tells a reader nothing, so resolve it
+    against the sibling it names. With no such sibling, report no default rather
+    than a shell fragment."""
+    for rec in records.values():
+        if rec.default is None:
+            continue
+        m = _REF_RE.match(rec.default.strip())
+        if not m:
+            continue
+        target = records.get(m.group(1))
+        rec.default = target.default if target is not None else None
 
 
 def _as_bool(value: object) -> bool:

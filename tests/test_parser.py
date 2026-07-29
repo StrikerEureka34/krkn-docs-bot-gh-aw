@@ -148,9 +148,12 @@ def test_extract_first_declaration_wins(tmp_path):
     assert "KUBECONFIG" not in recs
 
 
-def test_extract_variable_reference_default_kept_literal(tmp_path):
+def test_extract_variable_reference_alone_is_not_a_default(tmp_path):
+    """Superseded: this used to assert the literal "$ALERTS_PATH" was kept. That
+    string reached the rendered docs table, where it tells a reader nothing. With
+    no sibling to resolve against, it is better to report no default at all."""
     recs = _records(tmp_path, "export RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}\n")
-    assert recs["RESILIENCY_FILE"].default == "$ALERTS_PATH"
+    assert recs["RESILIENCY_FILE"].default is None
 
 
 def test_extract_unquoted_default_with_spaces(tmp_path):
@@ -393,3 +396,19 @@ def test_krknctl_group_descriptors_are_not_params(tmp_path):
         encoding="utf-8")
     assert [r.name for r in extract_krknctl_params(f, key="name")] == ["cerberus-enabled"]
     assert [r.name for r in extract_krknctl_params(f)] == ["CERBERUS_ENABLED"]
+
+
+def test_a_default_referencing_another_var_is_resolved(tmp_path):
+    """env.sh has RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}. Printing the
+    literal $ALERTS_PATH into a docs table tells a reader nothing."""
+    f = tmp_path / "env.sh"
+    f.write_text('export ALERTS_PATH=${ALERTS_PATH:=config/alerts.yaml}\n'
+                 'export RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}\n', encoding="utf-8")
+    recs = {r.name: r for r in extract_env_params(f)}
+    assert recs["RESILIENCY_FILE"].default == "config/alerts.yaml"
+
+
+def test_an_unresolvable_reference_becomes_no_default(tmp_path):
+    f = tmp_path / "env.sh"
+    f.write_text('export FOO=${FOO:=$NOT_DECLARED_HERE}\n', encoding="utf-8")
+    assert extract_env_params(f)[0].default is None
