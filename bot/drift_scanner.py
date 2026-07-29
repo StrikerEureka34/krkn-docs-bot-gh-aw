@@ -23,6 +23,7 @@ from bot.parser import extract_env_params, extract_krknctl_params, build_skip_li
 _MARKER_RE = re.compile(r'<krkn-hub-scenario\s+id="([^"]+)"')
 _SOURCES = (("krkn-hub", "env.sh"), ("krknctl", "krknctl-input.json"))
 _DEFAULT_HUB_URL = "https://github.com/krkn-chaos/krkn-hub/blob/main"
+_KRKN_URL = "https://github.com/krkn-chaos/krkn/blob/main"
 
 
 @dataclass
@@ -104,6 +105,49 @@ def scenario_findings(scenario, krkn_hub_root, website_root, hub_url=_DEFAULT_HU
     return findings
 
 
+def global_findings(krkn_hub_root, krkn_root, website_root):
+    """Drift in the two global parameter pages, reported under the scenario id
+    "globals" so a single `/fix globals` covers every group.
+
+    Sources are krkn-hub/env.sh and krkn/containers/krknctl-input.json. Tables are
+    data/params/globals/<source>-<group>.yaml, one file per group."""
+    from bot.globals import GLOBAL_SCENARIO, OTHER_GROUP, build_groups
+
+    ctl, env = build_groups(krkn_hub_root, krkn_root)
+    findings = []
+    for prefix, records, source_file in (
+        ("krknctl", ctl, f"{_KRKN_URL}/containers/krknctl-input.json"),
+        ("krkn-hub", env, f"{_DEFAULT_HUB_URL}/env.sh"),
+    ):
+        by_group = defaultdict(list)
+        for r in records:
+            by_group[r.group or OTHER_GROUP].append(r)
+        for group, rs in sorted(by_group.items()):
+            source = f"{prefix}-{group}"
+            table_file = f"data/params/{GLOBAL_SCENARIO}/{source}.yaml"
+            table = _table_params(Path(website_root) / table_file)
+            src = {r.name: r for r in rs}
+            if table is None:
+                findings.append(Finding(GLOBAL_SCENARIO, source, "missing-table",
+                    new=", ".join(sorted(src)), source_file=source_file,
+                    table_file=table_file))
+                continue
+            for name, rec in sorted(src.items()):
+                sdef = None if rec.default is None else str(rec.default)
+                if name not in table:
+                    findings.append(Finding(GLOBAL_SCENARIO, source, "missing", name,
+                        new=sdef, source_file=source_file, table_file=table_file))
+                elif table[name] != sdef:
+                    findings.append(Finding(GLOBAL_SCENARIO, source, "stale", name,
+                        old=table[name], new=sdef, source_file=source_file,
+                        table_file=table_file))
+            for name in sorted(table):
+                if name not in src:
+                    findings.append(Finding(GLOBAL_SCENARIO, source, "extra", name,
+                        old=table[name], source_file=source_file, table_file=table_file))
+    return findings
+
+
 def scan(krkn_hub_root, website_root, scenarios=None, hub_url=_DEFAULT_HUB_URL):
     if scenarios is None:
         scenarios = find_scenarios(website_root)
@@ -137,6 +181,10 @@ def _scenario_summary(fs) -> str:
     """The single checkbox label for a scenario. /fix acts per scenario and
     regenerates every source at once, so there is one checkbox per scenario."""
     if {f.kind for f in fs} == {"missing-table"}:
+        # Globals span 19 groups, so name them only when the list stays readable.
+        if len(fs) > 3:
+            n = sum(len(f.new.split(", ")) for f in fs if f.new)
+            return f"no tables yet for {len(fs)} groups, {n} params, /fix will generate"
         srcs = ", ".join(sorted(f.source for f in fs))
         return f"no table yet for {srcs}, /fix will generate"
     n = len(fs)

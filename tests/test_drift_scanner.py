@@ -101,3 +101,49 @@ def test_find_scenarios_from_markers(tmp_path):
     d.mkdir(parents=True)
     (d / "_index.md").write_text('<krkn-hub-scenario id="node-scenarios" />\n', encoding="utf-8")
     assert ds.find_scenarios(tmp_path) == ["node-scenarios"]
+
+
+# --- global parameter drift ------------------------------------------------
+
+def _globals_sources(tmp_path):
+    """A mini krkn-hub root env.sh + krkn containers/krknctl-input.json."""
+    hub = tmp_path / "hub"
+    hub.mkdir(parents=True, exist_ok=True)
+    (hub / "env.sh").write_text('export CERBERUS_ENABLED=${CERBERUS_ENABLED:=False}\n',
+                                encoding="utf-8")
+    c = tmp_path / "krkn" / "containers"
+    c.mkdir(parents=True)
+    (c / "krknctl-input.json").write_text(
+        '[{"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED",'
+        ' "group": "cerberus", "default": "False"}]', encoding="utf-8")
+    return hub, tmp_path / "krkn"
+
+
+def test_global_missing_table_is_reported(tmp_path):
+    hub, krkn = _globals_sources(tmp_path)
+    web = tmp_path / "web"
+    fs = ds.global_findings(hub, krkn, web)
+    assert {f.kind for f in fs} == {"missing-table"}
+    assert all(f.scenario == "globals" for f in fs)
+    assert {f.source for f in fs} == {"krknctl-cerberus", "krkn-hub-cerberus"}
+
+
+def test_global_stale_default_is_reported(tmp_path):
+    hub, krkn = _globals_sources(tmp_path)
+    web = tmp_path / "web"
+    d = web / "data/params/globals"
+    d.mkdir(parents=True)
+    (d / "krknctl-cerberus.yaml").write_text(
+        "params:\n  - name: cerberus-enabled\n    default: True\n", encoding="utf-8")
+    (d / "krkn-hub-cerberus.yaml").write_text(
+        "params:\n  - name: CERBERUS_ENABLED\n    default: False\n", encoding="utf-8")
+    fs = ds.global_findings(hub, krkn, web)
+    assert any(f.kind == "stale" and f.param == "cerberus-enabled"
+               and f.old == "True" and f.new == "False" for f in fs)
+
+
+def test_globals_get_their_own_checkbox(tmp_path):
+    hub, krkn = _globals_sources(tmp_path)
+    body = ds.format_report(ds.global_findings(hub, krkn, tmp_path / "web"))
+    assert "#### globals" in body
+    assert "/fix globals" in body
