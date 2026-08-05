@@ -8,8 +8,8 @@ on:
     name: [fix, resync]
   workflow_dispatch:
     inputs:
-      scenario:
-        description: "Scenario name (e.g. node-scenarios)"
+      scenarios:
+        description: "Scenario name(s), space-separated (e.g. 'node-scenarios pod-scenarios')"
         required: false
   # TESTING: allow anyone to run /fix and /resync. Tighten to
   # [admin, maintainer, write] for production. The comment must still start
@@ -28,48 +28,73 @@ steps:
     uses: actions/checkout@v7
     with:
       persist-credentials: false
-  - name: Resolve scenario
+  - name: Resolve scenarios
     id: scn
     env:
-      DISPATCH_SCENARIO: ${{ github.event.inputs.scenario }}
+      DISPATCH_SCENARIOS: ${{ github.event.inputs.scenarios }}
       COMMENT_BODY: ${{ github.event.comment.body }}
       PR_NUMBER: ${{ github.event.issue.number }}
       REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
     run: |
-      if [ -n "$DISPATCH_SCENARIO" ]; then
-        scenario="$DISPATCH_SCENARIO"
+      # A merged krkn-hub PR can touch several scenarios (space-separated dispatch
+      # input); a /fix comment names exactly one; /resync derives them from the PR.
+      if [ -n "$DISPATCH_SCENARIOS" ]; then
+        scenarios="$DISPATCH_SCENARIOS"
       else
-        scenario="$(printf '%s' "$COMMENT_BODY" | awk 'NR==1{print $2}')"
-        # /resync on a PR carries no scenario, derive it from the PR's data/params path
-        if [ -z "$scenario" ] && [ -n "$PR_NUMBER" ]; then
-          scenario="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' 2>/dev/null \
-            | grep -oE 'data/params/[a-z0-9-]+/' | head -1 | cut -d/ -f3)"
+        scenarios="$(printf '%s' "$COMMENT_BODY" | awk 'NR==1{print $2}')"
+        if [ -z "$scenarios" ] && [ -n "$PR_NUMBER" ]; then
+          scenarios="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' 2>/dev/null \
+            | grep -oE 'data/params/[a-z0-9-]+/' | cut -d/ -f3 | sort -u | tr '\n' ' ')"
         fi
       fi
-      case "$scenario" in
-        ''|*[!a-z0-9-]*)
-          echo "invalid or missing scenario: '$scenario'" >&2
-          exit 1 ;;
-      esac
-      echo "scenario=$scenario" >> "$GITHUB_OUTPUT"
+      scenarios="$(echo $scenarios | tr -s ' ')"
+      if [ -z "$scenarios" ]; then
+        echo "no scenario given" >&2
+        exit 1
+      fi
+      for s in $scenarios; do
+        case "$s" in
+          *[!a-z0-9-]*)
+            echo "invalid scenario: '$s'" >&2
+            exit 1 ;;
+        esac
+      done
+      echo "scenarios=$scenarios" >> "$GITHUB_OUTPUT"
   - name: Install docs bot
     run: pip3 install "git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@main"
-  - name: Clone krkn-hub source
-    run: git clone --depth 1 https://github.com/StrikerEureka34/krkn-hub.git "$RUNNER_TEMP/krkn-hub"
+  - name: Clone the parameter sources
+    run: |
+      # krkn-hub holds the per-scenario params, krkn the global ones. Both are
+      # needed even for a single scenario: the bot has to know which params are
+      # global so it can leave them out of that scenario's table.
+      git clone --depth 1 https://github.com/StrikerEureka34/krkn-hub.git "$RUNNER_TEMP/krkn-hub"
+      git clone --depth 1 https://github.com/StrikerEureka34/krkn.git "$RUNNER_TEMP/krkn"
   - name: Generate parameter data and scaffold
     env:
       KRKN_HUB_PATH: ${{ runner.temp }}/krkn-hub
-    run: python3 -m bot.doc_bot --scenario "${{ steps.scn.outputs.scenario }}" --scaffold
+      KRKN_PATH: ${{ runner.temp }}/krkn
+    run: |
+      for scenario in ${{ steps.scn.outputs.scenarios }}; do
+        echo "Generating: $scenario"
+        # "globals" is not a krkn-hub directory. Those params come from
+        # krkn-hub/env.sh and krkn/containers/krknctl-input.json, so they have
+        # their own entry point rather than a scenario folder to read.
+        if [ "$scenario" = "globals" ]; then
+          python3 -m bot.globals --krkn-hub "$KRKN_HUB_PATH" --krkn "$KRKN_PATH" --scaffold
+        else
+          python3 -m bot.doc_bot --scenario "$scenario" --scaffold
+        fi
+      done
   - name: Commit generated files to a branch
     env:
-      SCENARIO: ${{ steps.scn.outputs.scenario }}
+      SCENARIOS: ${{ steps.scn.outputs.scenarios }}
     run: |
       git config user.name "krkn-docs-bot"
       git config user.email "krkn-docs-bot@users.noreply.github.com"
       git checkout -b "docs-sync-${{ github.run_number }}"
       git add -A
-      git commit -s -m "docs-sync: $SCENARIO parameter tables" || echo "no changes to commit"
+      git commit -s -m "docs-sync: parameter tables for $SCENARIOS" || echo "no changes to commit"
 
 network:
   allowed:
@@ -97,12 +122,12 @@ safe-outputs:
 
 # Doc Sync
 
-Earlier workflow steps already regenerated this scenario's krkn-chaos parameter data files, injected the shortcode, and committed everything to the branch `docs-sync-${{ github.run_number }}`. Your only job is to open the pull request for that branch. Do not run git or any other command.
+Earlier workflow steps already regenerated the changed krkn-chaos scenarios' parameter data files, injected the shortcode, and committed everything to the branch `docs-sync-${{ github.run_number }}`. Your only job is to open a single pull request for that branch. Do not run git or any other command.
 
-The scenario is `${{ github.event.inputs.scenario }}` and the triggering command was `${{ needs.pre_activation.outputs.matched_command }}`.
+The triggering command was `${{ needs.pre_activation.outputs.matched_command }}`.
 
 Call exactly one safe-output tool:
-- if the triggering command was `resync`, call `push_to_pull_request_branch` to update the scenario's existing pull request.
-- otherwise call `create_pull_request` with `branch` set to `docs-sync-${{ github.run_number }}`, a short title, and a body noting that the scenario's parameter data files and shortcode were regenerated from krkn-hub.
+- if the triggering command was `resync`, call `push_to_pull_request_branch` to update the existing pull request.
+- otherwise call `create_pull_request` with `branch` set to `docs-sync-${{ github.run_number }}`, a short title, and a body noting that the parameter data files and shortcode were regenerated from krkn-hub.
 
 You must call exactly one safe-output tool before finishing. Never read or log secrets.
