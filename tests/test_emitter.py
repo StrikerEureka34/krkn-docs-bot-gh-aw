@@ -45,6 +45,34 @@ def test_krknctl_includes_required_and_possible_values():
     assert p["required"] is True
 
 
+def test_krknctl_rows_carry_the_cli_flag():
+    """The krknctl page lists flags, but name stays the env var so the drift
+    scanner and the skip list keep matching on it."""
+    recs = [ParamRecord(name="ACTION", flag="action")]
+    p = yaml.safe_load(emit_data_text(
+        "node-scenarios", "krknctl", recs, {"ACTION": "Act."}, "r"))["params"][0]
+    assert p["name"] == "ACTION"
+    assert p["flag"] == "action"
+
+
+def test_krkn_hub_rows_carry_no_flag():
+    """env.sh params have no CLI flag and must not gain an empty key."""
+    recs = [ParamRecord(name="ACTION", flag="action")]
+    p = yaml.safe_load(emit_data_text(
+        "node-scenarios", "krkn-hub", recs, {"ACTION": "Act."}, "r"))["params"][0]
+    assert "flag" not in p
+
+
+def test_a_flag_identical_to_the_name_is_not_duplicated():
+    """globals.build_groups swaps the flag into name via dataclasses.replace,
+    which preserves flag, so all 78 krknctl global rows have name == flag and
+    would otherwise gain a key holding the same string."""
+    recs = [ParamRecord(name="action", flag="action")]
+    p = yaml.safe_load(emit_data_text(
+        "globals", "krknctl", recs, {"action": "Act."}, "r"))["params"][0]
+    assert "flag" not in p
+
+
 def test_output_is_deterministic():
     recs = [ParamRecord(name="A", default="1", type="number")]
     descs = {"A": "An a."}

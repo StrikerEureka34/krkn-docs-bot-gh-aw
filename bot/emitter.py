@@ -15,6 +15,12 @@ def _param_dict(rec, description, source, scenario):
     if rec.default is not None:
         d["default"] = rec.default
     if source == "krknctl":
+        # The page lists CLI flags, but name stays the env var: it is the join
+        # key to env.sh and what drift_scanner and build_skip_list match on.
+        # globals.build_groups has already swapped the flag into name and left
+        # flag set, so emitting both there would duplicate a key on every row.
+        if rec.flag and rec.flag != rec.name:
+            d["flag"] = rec.flag
         if rec.allowed_values:
             d["possible_values"] = list(rec.allowed_values)
         # No global param is required, so the column would be one value repeated.
