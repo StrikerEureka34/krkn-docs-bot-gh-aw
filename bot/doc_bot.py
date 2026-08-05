@@ -10,8 +10,8 @@ from bot.descriptions import resolve_descriptions
 from bot.emitter import emit_data_file, load_descriptions
 
 
-# ponytail: the gh-aw Copilot agent writes descriptions for new params, so the
-# bot stays deterministic and emits the placeholder fallback for them.
+# Descriptions for new params are written by the gh-aw agent, so extraction stays
+# deterministic and leaves them blank here.
 def _no_descriptions(scenario, names):
     return {}
 
@@ -32,12 +32,13 @@ def _emit_one(scenario, source, records, website_root, source_ref):
     emit_data_file(website_root, scenario, source, records, descs, source_ref)
 
 
-def run(scenario, krkn_hub_root, website_root, krkn_root=None, source_ref="HEAD"):
+def run(scenario, krkn_hub_root, website_root, krkn_root: str | Path = "krkn",
+        source_ref="HEAD"):
     krkn_hub_root, website_root = Path(krkn_hub_root), Path(website_root)
     scn = krkn_hub_root / scenario
     if not scn.exists():
         raise ValueError(f"Scenario directory not found: {scn}")
-    skip = build_skip_list(krkn_hub_root, Path(krkn_root) if krkn_root else Path("krkn"))
+    skip = build_skip_list(krkn_hub_root, krkn_root)
 
     if (scn / "env.sh").exists():
         recs = [r for r in extract_env_params(scn / "env.sh") if r.name not in skip]

@@ -1,4 +1,3 @@
-from unittest.mock import patch
 import yaml
 import bot.doc_bot as doc_bot
 
@@ -38,8 +37,7 @@ def test_env_only_param_is_left_blank_not_papered_over(tmp_path):
     (scn / "krknctl-input.json").write_text('[{"variable": "OTHER", "description": "x"}]', encoding="utf-8")
     website = _site(tmp_path)
     doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
-    # Was "Configures bar." That reads as finished while saying nothing, hiding
-    # the gap. Blank shows a human there is work to do.
+    # Was "Configures bar.", which reads as finished while saying nothing.
     assert _params(website, "node-scenarios")["BAR"]["description"] == ""
 
 
@@ -58,8 +56,8 @@ def test_source_wins_over_the_committed_file(tmp_path):
         "params:\n- name: FOO\n  description: hand written desc\n  default: x\n",
         encoding="utf-8")
     doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
-    # Was "hand written desc". The committed file is stamped "Do not edit by
-    # hand", so letting it beat the source froze descriptions at first generation.
+    # Was "hand written desc". The file says "Do not edit by hand", so letting
+    # it beat the source froze descriptions at first generation.
     assert _params(website, "node-scenarios")["FOO"]["description"] == "from json"
 
 
@@ -81,9 +79,7 @@ def test_emit_then_reemit_is_byte_identical(tmp_path):
     out = website / "data/params/node-scenarios/krkn-hub.yaml"
     first = out.read_text(encoding="utf-8")
 
-    # Second run must produce identical bytes. A param nothing describes is now
-    # left blank rather than given a placeholder, and blank is falsy, so it stays
-    # in the residual list and is offered to the resolver on every run. That is
-    # fine: the resolver is a no-op in production and the output is unchanged.
+    # A blank description is falsy, so an undescribed param goes to the resolver
+    # on every run. The resolver is a no-op here, so the bytes still match.
     doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
     assert out.read_text(encoding="utf-8") == first

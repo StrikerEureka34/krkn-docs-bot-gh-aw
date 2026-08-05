@@ -3,18 +3,18 @@
 
 krknctl globals come from krkn/containers/krknctl-input.json, which carries a
 "group" field and is displayed by CLI flag name. krkn-hub globals come from
-krkn-hub/env.sh, which has no grouping of its own: it borrows one by joining
-each export name against the krknctl "variable" field. Exports that do not join
-land in a single "other" group.
+krkn-hub/env.sh, which has no grouping of its own: it borrows one by joining each
+export name against the krknctl "variable" field. Exports that do not join land
+in a single "other" group.
 
-Section headings and their order live in the website page, not here. The page
-writes its own heading and then calls the shortcode for that group.
+Section headings and their order live in the website page, not here.
 """
 import argparse
 from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
 
-from bot.parser import extract_env_params, extract_krknctl_params
+from bot.parser import extract_env_params, extract_krknctl_params, require_sources
 from bot.emitter import emit_data_file, load_descriptions
 from bot.descriptions import resolve_descriptions
 
@@ -25,13 +25,16 @@ _KRKNCTL_REL = "containers/krknctl-input.json"
 
 def build_groups(krkn_hub_root, krkn_root):
     """(krknctl_records, env_records), both with .group populated.
-
-    krknctl records are keyed on the CLI flag because that is what its page
-    displays. env records keep the variable name and borrow the group, and a
-    description, from the matching krknctl entry when they have none of their own."""
-    ctl_path = Path(krkn_root) / _KRKNCTL_REL
-    by_flag = extract_krknctl_params(ctl_path, key="name")
-    by_var = {r.name: r for r in extract_krknctl_params(ctl_path)}
+    The krknctl page renders CLI flags, so those records swap in the flag as the
+    name. env records keep the variable name and borrow the group, and a
+    description, from the matching krknctl entry when they have none."""
+    records = extract_krknctl_params(Path(krkn_root) / _KRKNCTL_REL)
+    by_var = {r.name: r for r in records}
+    # An entry with no flag falls back to its variable name rather than
+    # vanishing, and one with no group joins "other". A row emitted without a
+    # group matches no group-filtered call, so it would drop off the page.
+    ctl = [replace(r, name=r.flag or r.name, group=r.group or OTHER_GROUP)
+           for r in records]
 
     env_path = Path(krkn_hub_root) / "env.sh"
     env = extract_env_params(env_path) if env_path.exists() else []
@@ -42,7 +45,7 @@ def build_groups(krkn_hub_root, krkn_root):
         if not r.description and match and match.description:
             r.description = match.description
             r.description_source = "krknctl"
-    return by_flag, env
+    return ctl, env
 
 
 def _by_group(records):
@@ -53,19 +56,15 @@ def _by_group(records):
 
 
 def _no_descriptions(scenario, names):
-    """Globals take their wording from the sources or from the existing file. The
-    gh-aw agent fills any residue, same as the per-scenario path."""
+    """Globals take their wording from the sources or from the existing file, and
+    the gh-aw agent fills any residue. Same as the per-scenario path."""
     return {}
 
 
 def emit(website_root, krkn_hub_root, krkn_root, source_ref="HEAD"):
     """Write data/params/globals/<source>.yaml, one file per source. Returns the
-    paths written.
-
-    Every param carries its group, and the page's shortcode filters on it. Keeping
-    the grouping in the data rather than in filenames means a new upstream group
-    costs no new file. Existing descriptions win, so hand-edited wording on the
-    page survives regeneration."""
+    paths written. Every param carries its group and the page's shortcode filters
+    on it, so a new upstream group costs no new file."""
     ctl, env = build_groups(krkn_hub_root, krkn_root)
     written = []
     for source, records in (("krknctl", ctl), ("krkn-hub", env)):
@@ -88,8 +87,7 @@ _PAGES = (
 def scaffold(website_root, krkn_hub_root, krkn_root):
     """Replace the hand-written tables on the two global pages with group-filtered
     param-table calls. Returns a report line per table.
-
-    The group is derived from each table's own rows, so no marker or heading map is
+    The group comes from each table's own rows, so no marker or heading map is
     needed. A table whose rows span groups, or whose group is claimed by another
     table on the same page, is left alone rather than guessed at."""
     from bot.scaffold import inject_global_shortcodes
@@ -120,6 +118,7 @@ def main() -> None:
                     help="Also replace the tables on the two global pages with "
                          "param-table calls")
     args = ap.parse_args()
+    require_sources(args.krkn_hub, args.krkn)
     for path in emit(args.website, args.krkn_hub, args.krkn, args.source_ref):
         print(path)
     if args.scaffold:

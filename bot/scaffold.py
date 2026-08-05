@@ -38,7 +38,7 @@ def inject_shortcode(text, scenario, source):
 def _first_cell(line):
     """Parameter name from a table row, or None. Handles both page styles:
     "| `--flag` | ... |" on the krknctl page and "`NAME` | ... " on the krkn-hub
-    page. The leading -- of a CLI flag is stripped so it matches the source name."""
+    page. A CLI flag's leading -- is stripped so it matches the source name."""
     parts = line.strip().strip("|").split("|")
     if not parts:
         return None
@@ -66,15 +66,11 @@ def _tables(lines):
 def inject_global_shortcodes(text, source, name_to_group):
     """Replace each parameter table on a global page with a group-filtered
     param-table call, deriving the group from the table's own rows.
-
-    Returns (new_text, report). A table is only replaced when every row resolves
-    to the same known group AND that group is claimed by exactly one table on the
-    page.
-
-    That second condition needs two passes. Kraken and Tunings both draw from
-    "general": injecting the first would pull Tunings' params into Kraken while
-    Tunings still lists them, showing three params twice. Refusing only the later
-    table is not enough, so a split group is refused everywhere."""
+    Returns (new_text, report). A table is replaced only when every row resolves
+    to the same known group and exactly one table on the page claims that group.
+    Two sections can draw from one group: Kraken and Tunings both take from
+    "general". Injecting either would pull the other's params in while that
+    section still lists them, so a split group is left alone on every table."""
     lines = text.splitlines(keepends=True)
     report, edits = [], []
 
@@ -147,8 +143,8 @@ def _find_tab(website_root, scenario, source):
     return tab if tab.exists() else None
 
 
-# Provisional new-page layout. Confirm the frontmatter format with maintainers
-# before relying on it (weight, description, overview prose are placeholders).
+# TODO: confirm the new-page frontmatter format with maintainers before relying
+# on it (weight, description, and overview prose are placeholders).
 _PAGE_HEAD = '''---
 title: __TITLE__
 description:

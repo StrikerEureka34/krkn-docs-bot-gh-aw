@@ -3,17 +3,12 @@ def resolve_descriptions(scenario, records, existing, llm_fn):
 
     Priority: source desc -> existing file desc -> LLM (residual only).
 
-    Source first, deliberately. The order used to be existing first, to protect
-    hand-edits, but the file it was protecting is stamped "Do not edit by hand".
-    All it actually did was freeze descriptions at first generation: improving the
-    wording in krknctl-input.json or an env.sh comment changed nothing downstream,
-    because the committed data file always won. That makes a generated artifact
-    authoritative over its own source, which is the opposite of what a sync bot is
-    for. Every other field (default, type, possible_values) already takes source as
-    truth; descriptions were the odd one out.
+    The old order put existing first, to protect hand-edits. But the file it
+    protected is stamped "Do not edit by hand", so all it did was freeze wording
+    at first generation: a better description in krknctl-input.json never
+    reached the docs. Every other field already takes the source as truth.
 
-    The existing value stays as a fallback for params neither source describes,
-    which today is the six krkn-hub-only ones like PORT and SIGNAL_ADDRESS.
+    Existing stays as a fallback for params neither source describes.
     """
     out = {}
     residual = []
@@ -27,7 +22,7 @@ def resolve_descriptions(scenario, records, existing, llm_fn):
     if residual:
         generated = llm_fn(scenario, residual)
         for name in residual:
-            # Blank, not a placeholder. "Configures port." reads as finished while
-            # saying nothing, which hides the gap instead of showing it.
+            # Blank, not a placeholder. "Configures port." reads as finished
+            # while saying nothing, which hides the gap.
             out[name] = generated.get(name, "")
     return out, residual

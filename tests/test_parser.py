@@ -1,8 +1,12 @@
 from pathlib import Path
+
+import pytest
+
 from bot.parser import (
     build_skip_list,
     extract_env_params,
     extract_krknctl_params,
+    require_sources,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -14,49 +18,40 @@ def _records(tmp_path, text):
     return {r.name: r for r in extract_env_params(f)}
 
 
-def test_build_skip_list(tmp_path):
-    """Global params come from the sources, not from all-scenario-env.md. That page
-    is generated now, so its param names no longer appear in the markdown."""
-    hub = tmp_path / "hub"
+def _sources(tmp_path, env=None, krknctl=None):
+    """A krkn-hub root and a krkn root, each holding a global source or not."""
+    hub, krkn = tmp_path / "krkn-hub", tmp_path / "krkn"
     hub.mkdir()
-    (hub / "env.sh").write_text('export WAIT_DURATION=${WAIT_DURATION:=60}\n', encoding="utf-8")
-    c = tmp_path / "krkn" / "containers"
-    c.mkdir(parents=True)
-    (c / "krknctl-input.json").write_text(
-        '[{"name": "prometheus-url", "variable": "PROMETHEUS_URL", "group": "prometheus"}]',
-        encoding="utf-8")
-    skip = build_skip_list(hub, tmp_path / "krkn")
-    assert "WAIT_DURATION" in skip     # from env.sh
-    assert "PROMETHEUS_URL" in skip    # from krknctl-input.json
-    assert "SCENARIO_TYPE" in skip     # hardcoded fallback always present
-    assert "SCENARIO_FILE" in skip
-    assert "IMAGE" in skip
+    (krkn / "containers").mkdir(parents=True)
+    if env is not None:
+        (hub / "env.sh").write_text(env)
+    if krknctl is not None:
+        (krkn / "containers/krknctl-input.json").write_text(krknctl)
+    return hub, krkn
 
 
-def test_require_sources_fails_loudly_on_a_missing_source(tmp_path):
-    """A missing source degrades the skip list silently and leaks 78 global params
-    into every per-scenario table, so CLI boundaries must refuse to run."""
-    import pytest
-    from bot.parser import require_sources
-    hub = tmp_path / "hub"
-    hub.mkdir()
-    (hub / "env.sh").write_text("export A=${A:=1}\n", encoding="utf-8")
+def test_skip_list_covers_both_sources(tmp_path):
+    hub, krkn = _sources(
+        tmp_path,
+        env='export WAIT_DURATION="${WAIT_DURATION:-60}"\n',
+        krknctl='[{"variable": "TELEMETRY_ENABLED", "name": "telemetry-enabled"}]')
+    skip = build_skip_list(hub, krkn)
+    assert "WAIT_DURATION" in skip
+    assert "TELEMETRY_ENABLED" in skip
+    # Set by run.sh, so neither source declares them.
+    assert {"SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"} <= skip
+
+
+def test_skip_list_tolerates_a_missing_source(tmp_path):
+    hub, krkn = _sources(tmp_path, env='export WAIT_DURATION="${WAIT_DURATION:-60}"\n')
+    assert build_skip_list(hub, krkn) == {
+        "WAIT_DURATION", "SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"}
+
+
+def test_require_sources_names_the_file_and_how_to_point_at_it(tmp_path):
+    hub, krkn = _sources(tmp_path, env="")
     with pytest.raises(FileNotFoundError, match="KRKN_PATH"):
-        require_sources(hub, tmp_path / "no-krkn")
-    with pytest.raises(FileNotFoundError, match="KRKN_HUB_PATH"):
-        require_sources(tmp_path / "no-hub", tmp_path / "no-krkn")
-
-
-def test_require_sources_passes_when_both_exist(tmp_path):
-    from bot.parser import require_sources
-    hub = tmp_path / "hub"
-    hub.mkdir()
-    (hub / "env.sh").write_text("export A=${A:=1}\n", encoding="utf-8")
-    c = tmp_path / "krkn" / "containers"
-    c.mkdir(parents=True)
-    (c / "krknctl-input.json").write_text("[]", encoding="utf-8")
-    require_sources(hub, tmp_path / "krkn")   # must not raise
-
+        require_sources(hub, krkn)
 
 
 def test_extract_bare_var_is_required_no_default(tmp_path):
@@ -149,9 +144,9 @@ def test_extract_first_declaration_wins(tmp_path):
 
 
 def test_extract_variable_reference_alone_is_not_a_default(tmp_path):
-    """Superseded: this used to assert the literal "$ALERTS_PATH" was kept. That
-    string reached the rendered docs table, where it tells a reader nothing. With
-    no sibling to resolve against, it is better to report no default at all."""
+    # Was: the literal "$ALERTS_PATH" is kept. It reached the rendered table,
+    # where it tells a reader nothing. With no sibling to resolve against,
+    # reporting no default is better.
     recs = _records(tmp_path, "export RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}\n")
     assert recs["RESILIENCY_FILE"].default is None
 
@@ -331,6 +326,57 @@ def test_adv_empty_and_comment_only_files(tmp_path):
     assert extract_env_params(f) == []
 
 
+# group and flag, the two krknctl-only fields
+
+def test_krknctl_params_carry_their_group(tmp_path):
+    f = tmp_path / "krknctl-input.json"
+    f.write_text('[{"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", '
+                 '"group": "cerberus", "default": "False"}]', encoding="utf-8")
+    rec = extract_krknctl_params(f)[0]
+    assert rec.name == "CERBERUS_ENABLED"
+    assert rec.group == "cerberus"
+
+
+def test_krknctl_params_carry_both_identifiers(tmp_path):
+    """The env var joins against env.sh, the flag is what the krknctl page shows.
+    Both ride on the record so nothing has to parse the file twice."""
+    f = tmp_path / "krknctl-input.json"
+    f.write_text('[{"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", '
+                 '"group": "cerberus"}]', encoding="utf-8")
+    rec = extract_krknctl_params(f)[0]
+    assert rec.name == "CERBERUS_ENABLED"
+    assert rec.flag == "cerberus-enabled"
+
+
+def test_krknctl_group_descriptors_are_not_params(tmp_path):
+    """A "type": "Group" entry names a group and configures nothing."""
+    f = tmp_path / "krknctl-input.json"
+    f.write_text(
+        '[{"name": "cerberus", "description": "Group containing ...", "type": "Group"},'
+        ' {"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", "group": "cerberus"}]',
+        encoding="utf-8")
+    assert [r.name for r in extract_krknctl_params(f)] == ["CERBERUS_ENABLED"]
+
+
+def test_a_group_descriptor_is_skipped_even_if_it_gains_a_variable(tmp_path):
+    """Today they carry no variable, so the variable check alone would do it.
+    This pins the intent so a data change upstream cannot leak a phantom param
+    into a published table."""
+    f = tmp_path / "krknctl-input.json"
+    f.write_text('[{"name": "cerberus", "variable": "CERBERUS", "type": "Group"}]',
+                 encoding="utf-8")
+    assert extract_krknctl_params(f) == []
+
+
+def test_a_param_without_a_group_gets_none(tmp_path):
+    """Per-scenario krknctl-input.json files carry no group."""
+    f = tmp_path / "krknctl-input.json"
+    f.write_text('[{"variable": "X"}]', encoding="utf-8")
+    rec = extract_krknctl_params(f)[0]
+    assert rec.group is None
+    assert rec.flag is None
+
+
 def test_adv_indented_and_multi_space_export(tmp_path):
     recs = _records(tmp_path, "   export A=${A:=1}\n\texport B=${B:=2}\nexport   C=${C:=3}\n")
     assert recs["A"].default == "1"
@@ -354,61 +400,59 @@ def test_adv_krknctl_boolean_and_numeric_json_types(tmp_path):
     assert recs[0].required is True
 
 
-def test_krknctl_params_carry_their_group(tmp_path):
-    f = tmp_path / "krknctl-input.json"
-    f.write_text('[{"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", '
-                 '"group": "cerberus", "default": "False"}]', encoding="utf-8")
-    rec = extract_krknctl_params(f)[0]
-    assert rec.name == "CERBERUS_ENABLED"   # default key is still "variable"
-    assert rec.group == "cerberus"
-
-
-def test_krknctl_params_can_key_on_the_cli_flag(tmp_path):
-    f = tmp_path / "krknctl-input.json"
-    f.write_text('[{"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", '
-                 '"group": "cerberus"}]', encoding="utf-8")
-    assert extract_krknctl_params(f, key="name")[0].name == "cerberus-enabled"
-
+# alias exports and reference defaults
 
 def test_alias_export_is_not_a_param(tmp_path):
-    """Root env.sh pattern: export KUBECONFIG=${KRKN_KUBE_CONFIG} re-exports a
-    different variable. That is plumbing, not a knob a user sets."""
-    f = tmp_path / "env.sh"
-    f.write_text("export KUBECONFIG=${KRKN_KUBE_CONFIG}\n", encoding="utf-8")
-    assert extract_env_params(f) == []
+    """Root env.sh: export KUBECONFIG=${KRKN_KUBE_CONFIG} re-exports a different
+    variable. Nobody sets KUBECONFIG here, so it is not a param."""
+    assert _records(tmp_path, "export KUBECONFIG=${KRKN_KUBE_CONFIG}\n") == {}
 
 
 def test_self_reference_stays_a_required_param(tmp_path):
-    """pvc-scenario pattern: export PVC_NAME=${PVC_NAME} is a real required input."""
-    f = tmp_path / "env.sh"
-    f.write_text("export FOO=${FOO}\n", encoding="utf-8")
-    rec = extract_env_params(f)[0]
-    assert rec.name == "FOO" and rec.required is True and rec.default is None
-
-
-def test_krknctl_group_descriptors_are_not_params(tmp_path):
-    """krknctl-input.json carries "type": "Group" descriptor entries alongside the
-    real params. They have a name but no variable, so keying on name must skip them."""
-    f = tmp_path / "krknctl-input.json"
-    f.write_text(
-        '[{"name": "cerberus", "description": "Group containing ...", "type": "Group"},'
-        ' {"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", "group": "cerberus"}]',
-        encoding="utf-8")
-    assert [r.name for r in extract_krknctl_params(f, key="name")] == ["cerberus-enabled"]
-    assert [r.name for r in extract_krknctl_params(f)] == ["CERBERUS_ENABLED"]
+    """pvc-scenario: export PVC_NAME=${PVC_NAME} is a real required input."""
+    rec = _records(tmp_path, "export FOO=${FOO}\n")["FOO"]
+    assert rec.required is True and rec.default is None
 
 
 def test_a_default_referencing_another_var_is_resolved(tmp_path):
-    """env.sh has RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}. Printing the
-    literal $ALERTS_PATH into a docs table tells a reader nothing."""
-    f = tmp_path / "env.sh"
-    f.write_text('export ALERTS_PATH=${ALERTS_PATH:=config/alerts.yaml}\n'
-                 'export RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}\n', encoding="utf-8")
-    recs = {r.name: r for r in extract_env_params(f)}
+    recs = _records(tmp_path,
+                    "export ALERTS_PATH=${ALERTS_PATH:=config/alerts.yaml}\n"
+                    "export RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}\n")
     assert recs["RESILIENCY_FILE"].default == "config/alerts.yaml"
 
 
 def test_an_unresolvable_reference_becomes_no_default(tmp_path):
-    f = tmp_path / "env.sh"
-    f.write_text('export FOO=${FOO:=$NOT_DECLARED_HERE}\n', encoding="utf-8")
-    assert extract_env_params(f)[0].default is None
+    recs = _records(tmp_path, "export FOO=${FOO:=$NOT_DECLARED_HERE}\n")
+    assert recs["FOO"].default is None
+
+
+def test_a_chain_of_references_resolves_all_the_way(tmp_path):
+    """A single pass left A holding "$C", since B was still a reference when A
+    read it. Which one broke depended on declaration order."""
+    recs = _records(tmp_path,
+                    "export A=${A:=$B}\n"
+                    "export B=${B:=$C}\n"
+                    "export C=${C:=value}\n")
+    assert [recs[n].default for n in "ABC"] == ["value", "value", "value"]
+
+
+def test_a_chain_resolves_regardless_of_declaration_order(tmp_path):
+    recs = _records(tmp_path,
+                    "export C=${C:=value}\n"
+                    "export B=${B:=$C}\n"
+                    "export A=${A:=$B}\n")
+    assert [recs[n].default for n in "ABC"] == ["value", "value", "value"]
+
+
+def test_a_reference_cycle_does_not_hang(tmp_path):
+    """Nothing in krkn-hub does this, but a parser must not recurse forever."""
+    recs = _records(tmp_path, "export A=${A:=$B}\nexport B=${B:=$A}\n")
+    assert recs["A"].default is None and recs["B"].default is None
+
+
+def test_an_unbalanced_brace_is_a_literal_not_a_reference(tmp_path):
+    """${FOO and $FOO} are not references. Matching them would silently drop a
+    default that happens to look like one."""
+    recs = _records(tmp_path, 'export X=${X:="${FOO"}\nexport Y=${Y:="$FOO}"}\n')
+    assert recs["X"].default == "${FOO"
+    assert recs["Y"].default == "$FOO}"

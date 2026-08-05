@@ -1,11 +1,13 @@
-import yaml
 import json
+
+import pytest
+import yaml
 
 from bot import globals as g
 
 
 def _sources(tmp_path, env, ctl):
-    """Build a mini krkn-hub + krkn. Returns (krkn_hub_root, krkn_root)."""
+    """A mini krkn-hub and krkn. Returns (krkn_hub_root, krkn_root)."""
     hub = tmp_path / "hub"
     hub.mkdir()
     (hub / "env.sh").write_text(env, encoding="utf-8")
@@ -19,6 +21,11 @@ CTL = [{"name": "cerberus-enabled", "variable": "CERBERUS_ENABLED", "group": "ce
         "default": "False", "description": "Enables Cerberus Support"}]
 
 CERBERUS = 'export CERBERUS_ENABLED=${CERBERUS_ENABLED:=False}\n'
+
+
+def _rows(website, source):
+    text = (website / f"data/params/globals/{source}.yaml").read_text(encoding="utf-8")
+    return yaml.safe_load(text)["params"]
 
 
 def test_env_export_borrows_its_group_from_the_join(tmp_path):
@@ -46,12 +53,37 @@ def test_unjoined_export_lands_in_other(tmp_path):
     assert env[0].group == "other"
 
 
-def test_krknctl_side_is_keyed_on_the_cli_flag(tmp_path):
+def test_the_krknctl_side_is_named_by_its_cli_flag(tmp_path):
     """Its page renders --cerberus-enabled, not CERBERUS_ENABLED."""
     hub, krkn = _sources(tmp_path, "", CTL)
     ctl, _ = g.build_groups(hub, krkn)
     assert ctl[0].name == "cerberus-enabled"
     assert ctl[0].group == "cerberus"
+
+
+def test_an_entry_without_a_flag_keeps_its_variable_name(tmp_path):
+    hub, krkn = _sources(tmp_path, "", [{"variable": "ONLY_A_VAR", "group": "cerberus"}])
+    ctl, _ = g.build_groups(hub, krkn)
+    assert [r.name for r in ctl] == ["ONLY_A_VAR"]
+
+
+def test_an_entry_without_a_group_lands_in_other(tmp_path):
+    """A row emitted with no group matches no group-filtered call, so it would
+    drop off the page rather than surface somewhere wrong."""
+    hub, krkn = _sources(tmp_path, "", [{"name": "no-group", "variable": "NO_GROUP"}])
+    web = tmp_path / "web"
+    g.emit(web, hub, krkn)
+    assert _rows(web, "krknctl")[0]["group"] == "other"
+
+
+def test_a_missing_env_sh_is_refused_at_the_cli(tmp_path, monkeypatch):
+    """emit() on its own would write an empty krkn-hub.yaml over the committed one."""
+    hub, krkn = _sources(tmp_path, "", CTL)
+    (hub / "env.sh").unlink()
+    monkeypatch.setattr("sys.argv", ["globals", "--krkn-hub", str(hub), "--krkn", str(krkn),
+                                     "--website", str(tmp_path / "web")])
+    with pytest.raises(FileNotFoundError, match="KRKN_HUB_PATH"):
+        g.main()
 
 
 def test_emits_one_file_per_source_not_per_group(tmp_path):
@@ -67,16 +99,19 @@ def test_every_param_carries_its_group(tmp_path):
     hub, krkn = _sources(tmp_path, 'export RETRY_WAIT=${RETRY_WAIT:=120}\n', CTL)
     web = tmp_path / "web"
     g.emit(web, hub, krkn)
-    rows = yaml.safe_load((web / "data/params/globals/krkn-hub.yaml").read_text())["params"]
-    assert {r["name"]: r["group"] for r in rows} == {"RETRY_WAIT": "other"}
-    ctl = yaml.safe_load((web / "data/params/globals/krknctl.yaml").read_text())["params"]
-    assert ctl[0]["group"] == "cerberus"
+    assert {r["name"]: r["group"] for r in _rows(web, "krkn-hub")} == {"RETRY_WAIT": "other"}
+    assert _rows(web, "krknctl")[0]["group"] == "cerberus"
+
+
+def test_globals_leave_out_the_required_column(tmp_path):
+    """No global is required, so the column would be one value repeated."""
+    hub, krkn = _sources(tmp_path, "", CTL)
+    web = tmp_path / "web"
+    g.emit(web, hub, krkn)
+    assert "required" not in _rows(web, "krknctl")[0]
 
 
 def test_a_source_description_change_reaches_the_data_file(tmp_path):
-    """Superseded: this used to assert the committed file beat the source, so
-    improving the wording upstream changed nothing downstream. Source wins now.
-    Better wording belongs in krknctl-input.json, where every consumer gets it."""
     hub, krkn = _sources(tmp_path, "", CTL)
     web = tmp_path / "web"
     out = web / "data/params/globals/krknctl.yaml"
@@ -84,16 +119,7 @@ def test_a_source_description_change_reaches_the_data_file(tmp_path):
     out.write_text("params:\n  - name: cerberus-enabled\n    description: stale wording\n",
                    encoding="utf-8")
     g.emit(web, hub, krkn)
-    assert yaml.safe_load(out.read_text())["params"][0]["description"] == "Enables Cerberus Support"
-
-
-def test_regenerating_twice_is_byte_identical(tmp_path):
-    hub, krkn = _sources(tmp_path, CERBERUS, CTL)
-    web = tmp_path / "web"
-    g.emit(web, hub, krkn)
-    first = (web / "data/params/globals/krkn-hub.yaml").read_text()
-    g.emit(web, hub, krkn)
-    assert (web / "data/params/globals/krkn-hub.yaml").read_text() == first
+    assert _rows(web, "krknctl")[0]["description"] == "Enables Cerberus Support"
 
 
 PAGE = """## Cerberus
@@ -113,7 +139,7 @@ def test_scaffold_injects_into_the_global_pages(tmp_path):
     d.mkdir(parents=True)
     (d / "all-scenario-env-krknctl.md").write_text(PAGE, encoding="utf-8")
     report = g.scaffold(web, hub, krkn)
-    out = (d / "all-scenario-env-krknctl.md").read_text()
+    out = (d / "all-scenario-env-krknctl.md").read_text(encoding="utf-8")
     assert 'group="cerberus"' in out
     assert "Blurb." in out, "prose must survive"
     assert any("cerberus" in r for r in report), report
@@ -124,3 +150,12 @@ def test_scaffold_tolerates_a_missing_page(tmp_path):
     web = tmp_path / "web"
     (web / "content/en/docs/scenarios").mkdir(parents=True)
     assert g.scaffold(web, hub, krkn) == []
+
+
+def test_regenerating_twice_is_byte_identical(tmp_path):
+    hub, krkn = _sources(tmp_path, CERBERUS, CTL)
+    web = tmp_path / "web"
+    g.emit(web, hub, krkn)
+    first = (web / "data/params/globals/krkn-hub.yaml").read_text(encoding="utf-8")
+    g.emit(web, hub, krkn)
+    assert (web / "data/params/globals/krkn-hub.yaml").read_text(encoding="utf-8") == first

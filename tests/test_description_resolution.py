@@ -7,13 +7,8 @@ def fake_llm(scenario, names):
 
 
 def test_source_wins_over_the_committed_file():
-    """THE regression this file exists for.
-
-    The old order was existing -> source, which froze descriptions at first
-    generation: improving the wording upstream changed nothing, because the
-    committed data file always won. That makes a generated artifact
-    authoritative over its own source, which defeats the point of a sync bot.
-    """
+    """The regression this file exists for. Under the old order a better
+    description upstream changed nothing, because the generated file won."""
     recs = [ParamRecord(name="P", description="improved upstream wording")]
     existing = {"P": "whatever was generated last time"}
     out, _ = resolve_descriptions("scn", recs, existing, fake_llm)
@@ -21,8 +16,8 @@ def test_source_wins_over_the_committed_file():
 
 
 def test_existing_is_the_fallback_when_the_source_says_nothing():
-    """Six global params have no description in either source. A value already in
-    the file is better than nothing, so it still fills the gap."""
+    """Some params are described nowhere. What is already in the file beats
+    nothing, so it still fills the gap."""
     recs = [ParamRecord(name="PORT")]
     out, called = resolve_descriptions("scn", recs, {"PORT": "kept"}, fake_llm)
     assert out["PORT"] == "kept"
@@ -45,8 +40,8 @@ def test_no_llm_call_when_all_resolved():
 
 
 def test_an_undescribed_param_is_left_blank_not_papered_over():
-    """The old fallback wrote "Configures port." which reads as finished and says
-    nothing, hiding the gap. An empty cell shows a human there is work to do."""
+    """The old fallback wrote "Configures port.", which reads as finished and
+    says nothing. An empty cell shows a human there is work to do."""
     recs = [ParamRecord(name="PORT")]
     out, called = resolve_descriptions("scn", recs, {}, lambda s, n: {})
     assert out["PORT"] == ""
