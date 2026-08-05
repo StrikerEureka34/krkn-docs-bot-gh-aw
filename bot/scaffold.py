@@ -13,10 +13,16 @@ def _is_table_separator(line):
     return bool(s) and "-" in s and all(c in "|-: " for c in s)
 
 
+def _call(scenario, source):
+    # krkn-hub params are env vars and take no prefix.
+    prefix = ' prefix="--"' if source == "krknctl" else ""
+    return f'{{{{< param-table scenario="{scenario}" source="{source}"{prefix} >}}}}'
+
+
 def inject_shortcode(text, scenario, source):
     """Replace the first markdown parameter table with the param-table shortcode call.
     Idempotent: returns text unchanged if a param-table call is already present."""
-    call = f'{{{{< param-table scenario="{scenario}" source="{source}" >}}}}'
+    call = _call(scenario, source)
     if "param-table" in text:
         return text
     lines = text.splitlines(keepends=True)
@@ -199,8 +205,7 @@ def scaffold_scenario(scenario, website_root):
     for source in sources:
         tab = scn_dir / f"_tab-{source}.md"
         if not tab.exists():
-            tab.write_text(f'{{{{< param-table scenario="{scenario}" source="{source}" >}}}}\n',
-                           encoding="utf-8")
+            tab.write_text(_call(scenario, source) + "\n", encoding="utf-8")
             continue
         original = tab.read_text(encoding="utf-8")
         new = inject_shortcode(original, scenario, source)

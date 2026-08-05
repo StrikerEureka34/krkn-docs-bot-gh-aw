@@ -65,7 +65,7 @@ def test_scaffold_creates_page_when_none_exists(tmp_path):
     krkn_hub_tab = (page / "_tab-krkn-hub.md").read_text(encoding="utf-8")
     assert '{{< param-table scenario="brand-new-scenario" source="krkn-hub" >}}' in krkn_hub_tab
     krknctl_tab = (page / "_tab-krknctl.md").read_text(encoding="utf-8")
-    assert '{{< param-table scenario="brand-new-scenario" source="krknctl" >}}' in krknctl_tab
+    assert '{{< param-table scenario="brand-new-scenario" source="krknctl" prefix="--" >}}' in krknctl_tab
 
 
 def test_scaffold_only_creates_tabs_for_sources_with_data(tmp_path):
@@ -97,6 +97,18 @@ def test_replaces_table_with_shortcode_and_keeps_prose():
     assert "| ACTION |" not in out
     assert "#### Supported parameters" in out
     assert "**NOTE** keep this prose." in out
+
+
+def test_the_krknctl_tab_call_carries_the_flag_prefix():
+    """The data stores a bare flag but a reader types --telemetry-enabled."""
+    out = inject_shortcode(TAB, scenario="node-scenarios", source="krknctl")
+    assert 'prefix="--"' in out
+
+
+def test_the_krkn_hub_tab_call_does_not():
+    """env.sh params are env vars and take no prefix."""
+    out = inject_shortcode(TAB, scenario="node-scenarios", source="krkn-hub")
+    assert "prefix" not in out
 
 
 def test_idempotent_when_already_migrated():
