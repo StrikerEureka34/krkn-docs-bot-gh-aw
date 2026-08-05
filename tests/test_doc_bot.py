@@ -14,6 +14,82 @@ def _params(website, scenario, source="krkn-hub"):
     return {p["name"]: p for p in data["params"]}
 
 
+def _page(website, scenario, source, table, page_dir=None):
+    d = website / "content/en/docs/scenarios" / (page_dir or scenario)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "_index.md").write_text(f'<krkn-hub-scenario id="{scenario}">\n', encoding="utf-8")
+    (d / f"_tab-{source}.md").write_text(table, encoding="utf-8")
+
+
+def _scn(tmp_path, name, env=None, krknctl=None):
+    scn = tmp_path / "hub" / name
+    scn.mkdir(parents=True)
+    if env:
+        (scn / "env.sh").write_text(env, encoding="utf-8")
+    if krknctl:
+        (scn / "krknctl-input.json").write_text(krknctl, encoding="utf-8")
+    return tmp_path / "hub"
+
+
+def test_a_published_description_is_carried_when_no_source_has_one(tmp_path):
+    """VERIFY_SESSION and 3 others: the page has wording and no source does."""
+    hub = _scn(tmp_path, "node-scenarios", env='export VERIFY_SESSION="${VERIFY_SESSION:-false}"\n')
+    website = _site(tmp_path)
+    _page(website, "node-scenarios", "krkn-hub",
+          "Parameter | Description | Type\n"
+          "--------- | ----------- | ----\n"
+          "VERIFY_SESSION | Verify the SSH session | string\n")
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    row = _params(website, "node-scenarios")["VERIFY_SESSION"]
+    assert row["description"] == "Verify the SSH session"
+    assert row["type"] == "string"
+    assert row["description_source"] == "published-table"
+
+
+def test_the_page_is_found_when_its_directory_name_diverges(tmp_path):
+    """hog-scenarios/cpu-hog-scenario is the page for node-cpu-hog. Only 12 of
+    the 31 scenarios match a page directory by name."""
+    hub = _scn(tmp_path, "node-cpu-hog", env='export NEW_ONE="${NEW_ONE:-x}"\n')
+    website = _site(tmp_path)
+    _page(website, "node-cpu-hog", "krkn-hub",
+          "Parameter | Description\n--------- | -----------\nNEW_ONE | From the page\n",
+          page_dir="hog-scenarios/cpu-hog-scenario")
+    doc_bot.run(scenario="node-cpu-hog", krkn_hub_root=hub, website_root=website)
+    assert _params(website, "node-cpu-hog")["NEW_ONE"]["description"] == "From the page"
+
+
+def test_the_krknctl_page_is_keyed_by_flag_not_env_var(tmp_path):
+    """The page lists --action; the data file keys name on ACTION."""
+    hub = _scn(tmp_path, "node-scenarios",
+               krknctl='[{"name": "action", "variable": "ACTION"}]')
+    website = _site(tmp_path)
+    _page(website, "node-scenarios", "krknctl",
+          "Parameter | Description\n--------- | -----------\n`--action` | From the page\n")
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    row = _params(website, "node-scenarios", "krknctl")["ACTION"]
+    assert row["description"] == "From the page"
+
+
+def test_a_carried_description_and_type_survive_the_next_run(tmp_path):
+    """The shortcode replaces the table in the run that reads it, so run 2 has
+    no page left to fall back to."""
+    hub = _scn(tmp_path, "node-scenarios", env='export VERIFY_SESSION="${VERIFY_SESSION:-false}"\n')
+    website = _site(tmp_path)
+    _page(website, "node-scenarios", "krkn-hub",
+          "Parameter | Description | Type\n"
+          "--------- | ----------- | ----\n"
+          "VERIFY_SESSION | Verify the SSH session | string\n")
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    tab = website / "content/en/docs/scenarios/node-scenarios/_tab-krkn-hub.md"
+    tab.write_text('{{< param-table scenario="node-scenarios" source="krkn-hub" >}}\n',
+                   encoding="utf-8")
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    row = _params(website, "node-scenarios")["VERIFY_SESSION"]
+    assert row["description"] == "Verify the SSH session"
+    assert row["type"] == "string"
+    assert row["description_source"] == "published-table"
+
+
 def test_env_description_filled_from_krknctl_json(tmp_path):
     hub = tmp_path / "hub"
     scn = hub / "node-scenarios"

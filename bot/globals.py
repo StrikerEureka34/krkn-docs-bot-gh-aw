@@ -61,18 +61,33 @@ def _no_descriptions(scenario, names):
     return {}
 
 
+def _published_globals(website_root):
+    """{source: {param: description}} from the two global pages. Each carries
+    nine tables, one per group, which published_table already handles."""
+    from bot.scaffold import published_cell, published_table
+    out = {}
+    for source, rel in _PAGES:
+        page = Path(website_root) / rel
+        rows = published_table(page.read_text(encoding="utf-8")) if page.exists() else {}
+        out[source] = {k: published_cell(rows, k, "description") for k in rows
+                       if published_cell(rows, k, "description")}
+    return out
+
+
 def emit(website_root, krkn_hub_root, krkn_root, source_ref="HEAD"):
     """Write data/params/globals/<source>.yaml, one file per source. Returns the
     paths written. Every param carries its group and the page's shortcode filters
     on it, so a new upstream group costs no new file."""
     ctl, env = build_groups(krkn_hub_root, krkn_root)
+    published = _published_globals(website_root)
     written = []
     for source, records in (("krknctl", ctl), ("krkn-hub", env)):
         # Group order is stable so regenerating twice is byte identical.
         ordered = [r for _, rs in sorted(_by_group(records).items()) for r in rs]
         existing = load_descriptions(
             Path(website_root) / "data/params" / GLOBAL_SCENARIO / f"{source}.yaml")
-        descs, _ = resolve_descriptions(GLOBAL_SCENARIO, ordered, existing, _no_descriptions)
+        descs, _ = resolve_descriptions(GLOBAL_SCENARIO, ordered, existing,
+                                        _no_descriptions, published=published[source])
         written.append(
             emit_data_file(website_root, GLOBAL_SCENARIO, source, ordered, descs, source_ref))
     return written

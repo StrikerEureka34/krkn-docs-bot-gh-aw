@@ -7,7 +7,7 @@ from pathlib import Path
 from bot.parser import (extract_env_params, extract_krknctl_params,
                         build_skip_list, require_sources)
 from bot.descriptions import resolve_descriptions
-from bot.emitter import emit_data_file, load_descriptions
+from bot.emitter import emit_data_file, load_previous
 
 
 # Descriptions for new params are written by the gh-aw agent, so extraction stays
@@ -25,11 +25,39 @@ def _krknctl_records(scn):
     return {r.name: r for r in extract_krknctl_params(f)}
 
 
+def _published(website_root, scenario, source):
+    """description and type cells from the hand-written table the shortcode is
+    about to replace, keyed the way that page keys them. Page directory names
+    diverge from scenario names, so _find_tab resolves it rather than a join."""
+    from bot.scaffold import _find_tab, published_cell, published_table
+    tab = _find_tab(website_root, scenario, source)
+    if tab is None:
+        return {}, {}
+    rows = published_table(tab.read_text(encoding="utf-8"))
+
+    def col(c):
+        return {k: published_cell(rows, k, c) for k in rows
+                if published_cell(rows, k, c)}
+    return col("description"), col("type")
+
+
 def _emit_one(scenario, source, records, website_root, source_ref):
     out = website_root / "data" / "params" / scenario / f"{source}.yaml"
-    existing = load_descriptions(out)
-    descs, _ = resolve_descriptions(scenario, records, existing, _no_descriptions)
+    prev = load_previous(out)
+    pub_desc, pub_type = _published(website_root, scenario, source)
+    for r in records:
+        if r.type is None:
+            # The krknctl page lists --action while the record is keyed ACTION.
+            r.type = prev.get(r.name, {}).get("type") or pub_type.get(r.flag or r.name)
+        if not r.description_source:
+            r.description_source = prev.get(r.name, {}).get("description_source")
+    published = {r.name: pub_desc[r.flag or r.name] for r in records
+                 if (r.flag or r.name) in pub_desc}
+    existing = {n: p.get("description", "") for n, p in prev.items()}
+    descs, gaps = resolve_descriptions(scenario, records, existing,
+                                       _no_descriptions, published=published)
     emit_data_file(website_root, scenario, source, records, descs, source_ref)
+    return [(scenario, source) + g for g in gaps]
 
 
 def run(scenario, krkn_hub_root, website_root, krkn_root: str | Path = "krkn",
@@ -39,6 +67,7 @@ def run(scenario, krkn_hub_root, website_root, krkn_root: str | Path = "krkn",
     if not scn.exists():
         raise ValueError(f"Scenario directory not found: {scn}")
     skip = build_skip_list(krkn_hub_root, krkn_root)
+    gaps = []
 
     if (scn / "env.sh").exists():
         recs = [r for r in extract_env_params(scn / "env.sh") if r.name not in skip]
@@ -53,11 +82,12 @@ def run(scenario, krkn_hub_root, website_root, krkn_root: str | Path = "krkn",
                     r.description_source = "krknctl"
                 if r.type is None:
                     r.type = match.type
-            _emit_one(scenario, "krkn-hub", recs, website_root, source_ref)
+            gaps += _emit_one(scenario, "krkn-hub", recs, website_root, source_ref)
     if (scn / "krknctl-input.json").exists():
         recs = [r for r in extract_krknctl_params(scn / "krknctl-input.json") if r.name not in skip]
         if recs:
-            _emit_one(scenario, "krknctl", recs, website_root, source_ref)
+            gaps += _emit_one(scenario, "krknctl", recs, website_root, source_ref)
+    return gaps
 
 
 def main():

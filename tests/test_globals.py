@@ -28,6 +28,59 @@ def _rows(website, source):
     return yaml.safe_load(text)["params"]
 
 
+def _global_page(website, body):
+    page = website / "content/en/docs/scenarios"
+    page.mkdir(parents=True, exist_ok=True)
+    (page / "all-scenario-env.md").write_text(body, encoding="utf-8")
+
+
+def test_a_global_description_is_carried_from_the_published_page(tmp_path):
+    """6 of the 75 krkn-hub globals have no description in any source, and
+    SIGNAL_STATE is one that carries a long one on the page."""
+    hub, krkn = _sources(tmp_path, CERBERUS + 'export SIGNAL_STATE=${SIGNAL_STATE:=RUN}\n', CTL)
+    website = tmp_path / "site"
+    _global_page(website,
+                 "Parameter | Description | Default\n"
+                 "--------- | ----------- | -------\n"
+                 "`SIGNAL_STATE` | Waits for the RUN signal | RUN\n")
+    g.emit(website, hub, krkn)
+    rows = {r["name"]: r for r in _rows(website, "krkn-hub")}
+    assert rows["SIGNAL_STATE"]["description"] == "Waits for the RUN signal"
+    assert rows["SIGNAL_STATE"]["description_source"] == "published-table"
+
+
+def test_every_group_table_on_the_global_page_is_read(tmp_path):
+    """The real page carries nine tables, one per group. A first-table-only
+    reader would blank the other eight."""
+    hub, krkn = _sources(
+        tmp_path,
+        CERBERUS + 'export SIGNAL_STATE=${SIGNAL_STATE:=RUN}\nexport PORT=${PORT:=8081}\n',
+        CTL)
+    website = tmp_path / "site"
+    _global_page(website,
+                 "Parameter | Description\n--------- | -----------\n"
+                 "`SIGNAL_STATE` | From table one\n"
+                 "\n"
+                 "Parameter | Description\n--------- | -----------\n"
+                 "`PORT` | From table two\n")
+    g.emit(website, hub, krkn)
+    rows = {r["name"]: r for r in _rows(website, "krkn-hub")}
+    assert rows["SIGNAL_STATE"]["description"] == "From table one"
+    assert rows["PORT"]["description"] == "From table two"
+
+
+def test_a_global_source_description_still_wins(tmp_path):
+    hub, krkn = _sources(tmp_path, CERBERUS, CTL)
+    website = tmp_path / "site"
+    _global_page(website,
+                 "Parameter | Description\n--------- | -----------\n"
+                 "`CERBERUS_ENABLED` | stale page wording\n")
+    g.emit(website, hub, krkn)
+    rows = {r["name"]: r for r in _rows(website, "krkn-hub")}
+    assert rows["CERBERUS_ENABLED"]["description"] == "Enables Cerberus Support"
+    assert "description_source" not in rows["CERBERUS_ENABLED"]
+
+
 def test_env_export_borrows_its_group_from_the_join(tmp_path):
     hub, krkn = _sources(tmp_path, CERBERUS, CTL)
     _, env = g.build_groups(hub, krkn)
