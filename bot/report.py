@@ -19,12 +19,24 @@ def _cell(text):
     return re.sub(r"\s+", " ", text or "").replace("|", r"\|").strip()
 
 
+def _once(rows):
+    """A param on both tabs produces a row per source. The reader wants it once."""
+    seen, out = set(), []
+    for row in sorted(rows):
+        key = (row[0], row[2], row[3], row[4])
+        if key not in seen:
+            seen.add(key)
+            out.append(row)
+    return out
+
+
 def render(gaps):
     """gaps is (scenario, source, param, filled_from, text); filled_from is "" for
     a blank, with the reason in text. Sorted so reruns are byte identical."""
-    filled = sorted(g for g in gaps if g[3] in FILLED)
-    blank = sorted(g for g in gaps if g[3] == "")
-    orphan = sorted(g for g in gaps if g[3] == ORPHAN)
+    filled = _once(g for g in gaps if g[3] in FILLED)
+    blank = _once(g for g in gaps if g[3] == "")
+    # Orphans keep their source: which tab lost the row is the useful part.
+    orphan = sorted(set(g for g in gaps if g[3] == ORPHAN))
     out = []
     if filled:
         out += [f"### Descriptions not taken from source ({len(filled)})\n",

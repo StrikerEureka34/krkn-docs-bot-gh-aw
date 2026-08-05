@@ -1,6 +1,6 @@
 import pytest
 
-from bot.describe import build_prompt, context, describe, validate
+from bot.describe import build_prompt, context, describe, describe_fn, validate
 from bot.parser import ParamRecord
 
 CTX = {"params": {"BLOCK_SIZE": {"type": "number", "default": "512"}}}
@@ -87,6 +87,34 @@ def test_context_takes_examples_only_from_described_params(tmp_path):
 def test_context_without_a_readme_is_still_usable(tmp_path):
     ctx = context(tmp_path, ["X"], [ParamRecord(name="X")])
     assert ctx["readme"] == ""
+
+
+def test_the_memo_stops_a_second_call_for_the_same_param(tmp_path, monkeypatch):
+    """A param on both tabs must get one description. Two calls return two
+    different sentences, so the tabs would disagree about the same parameter."""
+    calls = []
+
+    def fake(scenario, names, ctx, transport=None):
+        calls.append(list(names))
+        return {n: "Written once." for n in names}
+
+    monkeypatch.setattr("bot.describe.describe", fake)
+    recs, memo = [ParamRecord(name="X")], {}
+    hub = describe_fn(tmp_path, recs, {}, memo)
+    ctl = describe_fn(tmp_path, recs, {}, memo)
+    assert hub("s", ["X"]) == {"X": "Written once."}
+    assert ctl("s", ["X"]) == {"X": "Written once."}
+    assert calls == [["X"]]
+
+
+def test_a_rejected_description_is_not_memoised(tmp_path, monkeypatch):
+    monkeypatch.setattr("bot.describe.describe",
+                        lambda s, n, c, transport=None: {x: "Configures port." for x in n})
+    reasons, memo = {}, {}
+    fn = describe_fn(tmp_path, [ParamRecord(name="X")], reasons, memo)
+    assert fn("s", ["X"]) == {}
+    assert memo == {}
+    assert reasons["X"] == "rejected: says nothing"
 
 
 @pytest.mark.parametrize("text,reason", [

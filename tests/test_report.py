@@ -32,6 +32,22 @@ def test_blank_params_get_their_own_section_with_a_reason():
     assert "trailing comment in env.sh" in md
 
 
+def test_a_param_on_both_tabs_is_reported_once():
+    """The same param appears on the krkn-hub and krknctl tabs; one row is enough."""
+    md = render([("s", "krkn-hub", "X", "llm", "same text"),
+                 ("s", "krknctl", "X", "llm", "same text")])
+    assert md.count("| s | X |") == 1
+    assert "### Descriptions not taken from source (1)" in md
+
+
+def test_an_orphan_keeps_its_source():
+    """Which tab lost the row is the useful part there."""
+    md = render([("s", "krkn-hub", "X", "orphan", ""),
+                 ("s", "krknctl", "X", "orphan", "")])
+    assert "| s | krkn-hub | X |" in md
+    assert "| s | krknctl | X |" in md
+
+
 def test_an_orphan_row_is_reported_separately():
     """A published row no source produces is a whole row dropped, not a cell."""
     md = render([("node-scenarios", "krknctl", "disks", "orphan", "")])

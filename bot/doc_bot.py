@@ -38,7 +38,7 @@ def _published(website_root, scenario, source):
     return col("description"), col("type")
 
 
-def _emit_one(scenario, source, records, website_root, source_ref, scn):
+def _emit_one(scenario, source, records, website_root, source_ref, scn, memo):
     out = website_root / "data" / "params" / scenario / f"{source}.yaml"
     prev = load_previous(out)
     pub_desc, pub_type = _published(website_root, scenario, source)
@@ -53,7 +53,7 @@ def _emit_one(scenario, source, records, website_root, source_ref, scn):
     existing = {n: p.get("description", "") for n, p in prev.items()}
     reasons = {}
     descs, gaps = resolve_descriptions(scenario, records, existing,
-                                       describe_fn(scn, records, reasons),
+                                       describe_fn(scn, records, reasons, memo),
                                        published=published)
     emit_data_file(website_root, scenario, source, records, descs, source_ref)
     # A rejection reason beats "nothing described it": the two need opposite fixes.
@@ -71,7 +71,8 @@ def run(scenario, krkn_hub_root, website_root, krkn_root: str | Path = "krkn",
     if not scn.exists():
         raise ValueError(f"Scenario directory not found: {scn}")
     skip = build_skip_list(krkn_hub_root, krkn_root)
-    gaps = []
+    # Shared across both sources: a param on both tabs gets one description.
+    gaps, memo = [], {}
 
     if (scn / "env.sh").exists():
         recs = [r for r in extract_env_params(scn / "env.sh") if r.name not in skip]
@@ -86,11 +87,11 @@ def run(scenario, krkn_hub_root, website_root, krkn_root: str | Path = "krkn",
                     r.description_source = "krknctl"
                 if r.type is None:
                     r.type = match.type
-            gaps += _emit_one(scenario, "krkn-hub", recs, website_root, source_ref, scn)
+            gaps += _emit_one(scenario, "krkn-hub", recs, website_root, source_ref, scn, memo)
     if (scn / "krknctl-input.json").exists():
         recs = [r for r in extract_krknctl_params(scn / "krknctl-input.json") if r.name not in skip]
         if recs:
-            gaps += _emit_one(scenario, "krknctl", recs, website_root, source_ref, scn)
+            gaps += _emit_one(scenario, "krknctl", recs, website_root, source_ref, scn, memo)
     return gaps
 
 

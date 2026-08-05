@@ -80,17 +80,24 @@ def context(scn, names, records):
     }
 
 
-def describe_fn(scn, records, reasons):
+def describe_fn(scn, records, reasons, memo=None):
     """llm_fn for resolve_descriptions. Rejections go into `reasons` so the report
-    can say why a cell is blank rather than only that it is."""
+    can say why a cell is blank rather than only that it is.
+
+    memo is shared across a scenario's two sources: a param on both tabs must get
+    one description, not two calls returning two different sentences."""
+    memo = {} if memo is None else memo
     by_name = {r.name: r for r in records}
 
     def fn(scenario, names):
-        out = {}
-        for name, text in describe(scenario, names, context(scn, names, records)).items():
+        out = {n: memo[n] for n in names if n in memo}
+        todo = [n for n in names if n not in memo]
+        if not todo:
+            return out
+        for name, text in describe(scenario, todo, context(scn, todo, records)).items():
             why = validate(text, asdict(by_name[name]))
             if why is None:
-                out[name] = text
+                out[name] = memo[name] = text
             else:
                 reasons[name] = why
         return out
