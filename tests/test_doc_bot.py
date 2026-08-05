@@ -29,6 +29,25 @@ def test_env_description_filled_from_krknctl_json(tmp_path):
     assert _params(website, "node-scenarios")["FOO"]["description"] == "controls the foo behaviour"
 
 
+def test_env_params_borrow_type_from_krknctl(tmp_path):
+    """env.sh has no types. RUNS has a type and no description, which the
+    description-only filter would have dropped."""
+    hub = tmp_path / "hub"
+    scn = hub / "node-scenarios"
+    scn.mkdir(parents=True)
+    (scn / "env.sh").write_text(
+        'export TIMEOUT="${TIMEOUT:-180}"\nexport RUNS="${RUNS:-1}"\n', encoding="utf-8")
+    (scn / "krknctl-input.json").write_text(
+        '[{"variable": "TIMEOUT", "type": "number", "description": "How long to wait"},'
+        ' {"variable": "RUNS", "type": "number"}]', encoding="utf-8")
+    website = _site(tmp_path)
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    rows = _params(website, "node-scenarios")
+    assert rows["TIMEOUT"]["type"] == "number"
+    assert rows["TIMEOUT"]["description"] == "How long to wait"
+    assert rows["RUNS"]["type"] == "number"
+
+
 def test_env_only_param_is_left_blank_not_papered_over(tmp_path):
     hub = tmp_path / "hub"
     scn = hub / "node-scenarios"

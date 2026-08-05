@@ -349,9 +349,8 @@ def test_krknctl_params_carry_both_identifiers(tmp_path):
 
 
 def test_a_secret_krknctl_param_is_marked(tmp_path):
-    """26 entries across the sources carry secret, and a reader needs to know not
-    to put the value on a command line. The field is the string "true", so a
-    truthiness check would also accept "false"."""
+    """The field is the string "true", so a truthiness check would also accept
+    "false"."""
     f = tmp_path / "krknctl-input.json"
     f.write_text('[{"name": "bmc-password", "variable": "BMC_PASSWORD", '
                  '"type": "string", "secret": "true"}, '

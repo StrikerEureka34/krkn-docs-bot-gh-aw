@@ -64,9 +64,8 @@ def test_krkn_hub_rows_carry_no_flag():
 
 
 def test_a_flag_identical_to_the_name_is_not_duplicated():
-    """globals.build_groups swaps the flag into name via dataclasses.replace,
-    which preserves flag, so all 78 krknctl global rows have name == flag and
-    would otherwise gain a key holding the same string."""
+    """globals swaps the flag into name and leaves flag set, so all 78 global
+    rows would gain a key holding the same string."""
     recs = [ParamRecord(name="action", flag="action")]
     p = yaml.safe_load(emit_data_text(
         "globals", "krknctl", recs, {"action": "Act."}, "r"))["params"][0]
@@ -74,8 +73,7 @@ def test_a_flag_identical_to_the_name_is_not_duplicated():
 
 
 def test_a_secret_param_is_marked_in_the_data():
-    """The shortcode renders this as "string (secret)". Losing it strips the one
-    signal on the page that the value is a credential."""
+    """The shortcode renders this as "string (secret)"."""
     recs = [ParamRecord(name="BMC_PASSWORD", flag="bmc-password",
                         type="string", secret=True)]
     p = yaml.safe_load(emit_data_text(
