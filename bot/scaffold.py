@@ -41,14 +41,20 @@ def inject_shortcode(text, scenario, source):
     return "".join(lines[:header] + [call + "\n"] + lines[end:])
 
 
+def _row_cells(line):
+    """Cells of a table row, formatting stripped. Handles both page styles:
+    "| `--flag` | ... |" on the krknctl page and "`NAME` | ... " with no outer
+    pipes on the krkn-hub page."""
+    return [c.strip().strip("`").strip() for c in line.strip().strip("|").split("|")]
+
+
 def _first_cell(line):
-    """Parameter name from a table row, or None. Handles both page styles:
-    "| `--flag` | ... |" on the krknctl page and "`NAME` | ... " on the krkn-hub
-    page. A CLI flag's leading -- is stripped so it matches the source name."""
-    parts = line.strip().strip("|").split("|")
-    if not parts:
+    """Parameter name from a table row, or None. A CLI flag's leading -- is
+    stripped so it matches the source name."""
+    cells = _row_cells(line)
+    if not cells:
         return None
-    cell = parts[0].strip().strip("`").strip()
+    cell = cells[0]
     if cell.startswith("--"):
         cell = cell[2:]
     return cell or None
@@ -67,6 +73,30 @@ def _tables(lines):
         else:
             i += 1
     return out
+
+
+def published_table(text):
+    """{parameter: (lowercased headers, cells)} for every table on the page.
+
+    Every table, not just the first: the global pages carry one per group.
+    Headers travel with each row because two tables on a page need not match."""
+    lines = text.splitlines()
+    out = {}
+    for header, _end, row_indexes in _tables(lines):
+        headers = [h.lower() for h in _row_cells(lines[header])]
+        for i in row_indexes:
+            name = _first_cell(lines[i])
+            if name and name not in out:
+                out[name] = (headers, _row_cells(lines[i]))
+    return out
+
+
+def published_cell(rows, name, column):
+    """The cell under `column` for `name`, or "" when the row or the column is
+    absent. The global pages have no Type column, so a miss is normal."""
+    headers, cells = rows.get(name, ([], []))
+    i = headers.index(column) if column in headers else -1
+    return cells[i] if 0 <= i < len(cells) else ""
 
 
 def inject_global_shortcodes(text, source, name_to_group):

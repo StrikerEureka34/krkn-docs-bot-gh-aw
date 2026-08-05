@@ -1,4 +1,5 @@
-from bot.scaffold import inject_shortcode, scaffold_scenario
+from bot.scaffold import (inject_shortcode, published_cell, published_table,
+                          scaffold_scenario)
 
 
 def _data(website, scenario, source="krkn-hub"):
@@ -109,6 +110,52 @@ def test_the_krkn_hub_tab_call_does_not():
     """env.sh params are env vars and take no prefix."""
     out = inject_shortcode(TAB, scenario="node-scenarios", source="krkn-hub")
     assert "prefix" not in out
+
+
+PUBLISHED = """\
+Parameter | Description | Type | Default
+--------- | ----------- | ---- | -------
+ACTION    | Do a thing  | enum | stop
+TIMEOUT   |             | number | 180
+"""
+
+SECOND_GROUP = """\
+Parameter | Description | Default
+--------- | ----------- | -------
+SIGNAL_STATE | Waits for the RUN signal | RUN
+"""
+
+
+def test_published_table_keys_rows_on_the_parameter():
+    """Headers travel per row: two tables on one page need not match."""
+    rows = published_table(PUBLISHED)
+    assert set(rows) == {"ACTION", "TIMEOUT"}
+    headers, cells = rows["ACTION"]
+    assert headers == ["parameter", "description", "type", "default"]
+    assert cells[1] == "Do a thing"
+
+
+def test_published_table_reads_every_table_on_the_page():
+    """The global pages carry one table per group, not one per page."""
+    rows = published_table(PUBLISHED + "\n" + SECOND_GROUP)
+    assert set(rows) == {"ACTION", "TIMEOUT", "SIGNAL_STATE"}
+    assert published_cell(rows, "SIGNAL_STATE", "description") == "Waits for the RUN signal"
+
+
+def test_published_cell_on_a_column_the_table_does_not_have():
+    """The global pages have no Type column at all."""
+    rows = published_table(SECOND_GROUP)
+    assert published_cell(rows, "SIGNAL_STATE", "type") == ""
+
+
+def test_published_table_strips_the_flag_prefix():
+    """The krknctl page lists --action; the data file keys name on ACTION."""
+    rows = published_table("Parameter | Description\n--- | ---\n`--action` | Do it\n")
+    assert set(rows) == {"action"}
+
+
+def test_published_table_on_a_page_with_no_table():
+    assert published_table("just prose\n") == {}
 
 
 def test_idempotent_when_already_migrated():
