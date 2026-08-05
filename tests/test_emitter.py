@@ -1,6 +1,6 @@
 import yaml
 from bot.parser import ParamRecord
-from bot.emitter import emit_data_text, load_descriptions
+from bot.emitter import emit_data_text, load_descriptions, load_previous
 
 
 def test_krkn_hub_omits_absent_optional_fields():
@@ -109,3 +109,39 @@ def test_load_descriptions_round_trips_what_the_emitter_wrote(tmp_path):
 
 def test_load_descriptions_of_a_missing_file_is_empty(tmp_path):
     assert load_descriptions(tmp_path / "nope.yaml") == {}
+
+
+def test_provenance_is_written_for_a_non_source_description():
+    recs = [ParamRecord(name="X", description_source="published-table")]
+    p = yaml.safe_load(emit_data_text(
+        "s", "krkn-hub", recs, {"X": "Text."}, "r"))["params"][0]
+    assert p["description_source"] == "published-table"
+
+
+def test_a_source_description_records_no_provenance():
+    """The field marks only fallbacks, so one grep finds every description that
+    did not come from a source file."""
+    for src in (None, "env-comment", "krknctl"):
+        recs = [ParamRecord(name="X", description_source=src)]
+        p = yaml.safe_load(emit_data_text(
+            "s", "krkn-hub", recs, {"X": "Text."}, "r"))["params"][0]
+        assert "description_source" not in p
+
+
+def test_the_read_back_returns_type_and_provenance(tmp_path):
+    """The published table is gone by run 2, so what it supplied has to come back
+    from the file or it lasted one commit."""
+    f = tmp_path / "krkn-hub.yaml"
+    f.write_text("params:\n"
+                 "  - name: VERIFY_SESSION\n"
+                 "    description: Verify the SSH session\n"
+                 "    type: string\n"
+                 "    description_source: published-table\n", encoding="utf-8")
+    prev = load_previous(f)
+    assert prev["VERIFY_SESSION"]["description"] == "Verify the SSH session"
+    assert prev["VERIFY_SESSION"]["type"] == "string"
+    assert prev["VERIFY_SESSION"]["description_source"] == "published-table"
+
+
+def test_the_read_back_of_a_missing_file_is_empty(tmp_path):
+    assert load_previous(tmp_path / "nope.yaml") == {}
