@@ -16,6 +16,7 @@ from pathlib import Path
 
 from bot.parser import extract_env_params, extract_krknctl_params, require_sources
 from bot.emitter import emit_data_file, load_descriptions
+from bot.describe import describe_fn
 from bot.descriptions import resolve_descriptions
 from bot.report import write_report
 
@@ -56,12 +57,6 @@ def _by_group(records):
     return out
 
 
-def _no_descriptions(scenario, names):
-    """Globals take their wording from the sources or from the existing file, and
-    the gh-aw agent fills any residue. Same as the per-scenario path."""
-    return {}
-
-
 def _published_globals(website_root):
     """{source: {param: description}} from the two global pages. Each carries
     nine tables, one per group, which published_table already handles."""
@@ -87,8 +82,11 @@ def emit(website_root, krkn_hub_root, krkn_root, source_ref="HEAD"):
         ordered = [r for _, rs in sorted(_by_group(records).items()) for r in rs]
         existing = load_descriptions(
             Path(website_root) / "data/params" / GLOBAL_SCENARIO / f"{source}.yaml")
-        descs, g = resolve_descriptions(GLOBAL_SCENARIO, ordered, existing,
-                                        _no_descriptions, published=published[source])
+        reasons = {}
+        descs, g = resolve_descriptions(
+            GLOBAL_SCENARIO, ordered, existing,
+            describe_fn(krkn_hub_root, ordered, reasons), published=published[source])
+        g = [(n, f, reasons.get(n, t) if f == "" else t) for n, f, t in g]
         gaps += [(GLOBAL_SCENARIO, source) + x for x in g]
         written.append(
             emit_data_file(website_root, GLOBAL_SCENARIO, source, ordered, descs, source_ref))

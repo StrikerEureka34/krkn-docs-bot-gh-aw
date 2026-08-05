@@ -1,8 +1,9 @@
 import pytest
 
-from bot.describe import build_prompt, describe, validate
+from bot.describe import build_prompt, context, describe, validate
+from bot.parser import ParamRecord
 
-CTX = {"params": {"BLOCK_SIZE": {"line": "export BLOCK_SIZE=${BLOCK_SIZE:=512}"}}}
+CTX = {"params": {"BLOCK_SIZE": {"type": "number", "default": "512"}}}
 
 
 def reply(content):
@@ -61,13 +62,31 @@ def test_no_credentials_makes_no_call(monkeypatch):
     assert describe("s", ["X"], CTX) == {}
 
 
-def test_the_prompt_carries_the_source_line_and_voice_examples():
+def test_the_prompt_carries_the_record_and_voice_examples():
     ctx = dict(CTX, examples=[("PORT", "Port to publish kraken status to")],
                readme="Fills a PVC.")
     p = build_prompt("pvc-scenario", ["BLOCK_SIZE"], ctx)
-    assert "export BLOCK_SIZE=${BLOCK_SIZE:=512}" in p
+    assert "type: number" in p and "default: 512" in p
     assert "Port to publish kraken status to" in p
     assert "Fills a PVC." in p
+
+
+def test_context_takes_examples_only_from_described_params(tmp_path):
+    """Voice examples come from real rows; an undescribed param has nothing to
+    teach and must not appear as an empty example."""
+    (tmp_path / "README.md").write_text("Fills a PVC.", encoding="utf-8")
+    recs = [ParamRecord(name="BLOCK_SIZE", type="number", default="512"),
+            ParamRecord(name="PORT", description="Port to publish to")]
+    ctx = context(tmp_path, ["BLOCK_SIZE"], recs)
+    assert ctx["readme"] == "Fills a PVC."
+    assert ctx["params"] == {"BLOCK_SIZE": {"type": "number", "default": "512",
+                                            "allowed": "", "required": ""}}
+    assert ctx["examples"] == [("PORT", "Port to publish to")]
+
+
+def test_context_without_a_readme_is_still_usable(tmp_path):
+    ctx = context(tmp_path, ["X"], [ParamRecord(name="X")])
+    assert ctx["readme"] == ""
 
 
 @pytest.mark.parametrize("text,reason", [

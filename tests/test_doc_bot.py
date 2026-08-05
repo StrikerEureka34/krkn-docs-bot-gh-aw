@@ -90,6 +90,27 @@ def test_a_carried_description_and_type_survive_the_next_run(tmp_path):
     assert row["description_source"] == "published-table"
 
 
+def test_a_generated_description_is_cached_not_regenerated(tmp_path, monkeypatch):
+    """temperature 0 is not fully reproducible across calls, so run 2 has to take
+    the value from the file or every sync churns the diff."""
+    calls = []
+
+    def fake(scenario, names, ctx, transport=None):
+        # No digits: validate() rejects a literal the source record does not have.
+        calls.append(list(names))
+        return {n: "Written by the model." for n in names}
+
+    monkeypatch.setattr("bot.describe.describe", fake)
+    hub = _scn(tmp_path, "node-scenarios", env='export NEW_ONE="${NEW_ONE:-x}"\n')
+    website = _site(tmp_path)
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    row = _params(website, "node-scenarios")["NEW_ONE"]
+    assert row["description"] == "Written by the model."
+    assert row["description_source"] == "llm"
+    assert len(calls) == 1
+
+
 def test_env_description_filled_from_krknctl_json(tmp_path):
     hub = tmp_path / "hub"
     scn = hub / "node-scenarios"

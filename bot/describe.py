@@ -4,6 +4,8 @@ import json
 import os
 import re
 import urllib.request
+from dataclasses import asdict
+from pathlib import Path
 
 MAX_LEN = 120
 _TIMEOUT = 30
@@ -14,7 +16,8 @@ _SYSTEM = (
     "Write one plain sentence describing each parameter, for a documentation "
     "table. One sentence, at most 120 characters, no markdown. Describe only what "
     "the context states. Never state a default, range or unit that is not in that "
-    "parameter's own record. If unsure, return an empty string for that parameter. "
+    "parameter's own record. Do not repeat the default value; the table shows it "
+    "in its own column. If unsure, return an empty string for that parameter. "
     "Match the voice of the examples. Return JSON only: an object mapping each "
     "parameter name to its sentence."
 )
@@ -51,13 +54,47 @@ def build_prompt(scenario, names, ctx):
     for n in names:
         p = (ctx.get("params") or {}).get(n, {})
         out.append(f"- {n}")
-        for label in ("line", "type", "allowed", "required"):
+        for label in ("type", "default", "allowed", "required"):
             if p.get(label):
                 out.append(f"    {label}: {p[label]}")
     if ctx.get("examples"):
         out += ["", "Examples from the same scenario, for voice:"]
         out += [f"- {n}: {d}" for n, d in ctx["examples"]]
     return "\n".join(out)
+
+
+def context(scn, names, records):
+    """What the model gets. Curated in code rather than left to the model to go
+    looking for, so the same run always sends the same thing."""
+    readme = Path(scn) / "README.md"
+    wanted = set(names)
+    return {
+        "readme": readme.read_text(encoding="utf-8")[:2000] if readme.exists() else "",
+        "params": {r.name: {"type": r.type or "",
+                            "default": r.default if r.default is not None else "",
+                            "allowed": ", ".join(r.allowed_values or []),
+                            "required": "yes" if r.required else ""}
+                   for r in records if r.name in wanted},
+        # Real rows from the same source, so the sentence lands in house voice.
+        "examples": [(r.name, r.description) for r in records if r.description][:5],
+    }
+
+
+def describe_fn(scn, records, reasons):
+    """llm_fn for resolve_descriptions. Rejections go into `reasons` so the report
+    can say why a cell is blank rather than only that it is."""
+    by_name = {r.name: r for r in records}
+
+    def fn(scenario, names):
+        out = {}
+        for name, text in describe(scenario, names, context(scn, names, records)).items():
+            why = validate(text, asdict(by_name[name]))
+            if why is None:
+                out[name] = text
+            else:
+                reasons[name] = why
+        return out
+    return fn
 
 
 def _post(url, key, body):

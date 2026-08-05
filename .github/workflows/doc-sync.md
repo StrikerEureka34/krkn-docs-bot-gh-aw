@@ -75,6 +75,13 @@ steps:
     env:
       KRKN_HUB_PATH: ${{ runner.temp }}/krkn-hub
       KRKN_PATH: ${{ runner.temp }}/krkn
+      GH_AW_REPORT_DIR: ${{ runner.temp }}
+      # Custom steps run before the firewall is installed, so this needs no
+      # network.allowed entry. The token is the one gh-aw already validates and
+      # deliberately keeps out of the agent sandbox.
+      OPENAI_BASE_URL: https://api.githubcopilot.com
+      OPENAI_API_KEY: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+      OPENAI_MODEL: gpt-4o-mini
     run: |
       for target in ${{ steps.scn.outputs.scenarios }}; do
         echo "Generating: $target"
@@ -87,6 +94,9 @@ steps:
             python3 -m bot.doc_bot --scenario "$target" --scaffold ;;
         esac
       done
+      # Each target appends rows; this renders them once, so the commit message
+      # carries one merged table instead of a heading per target.
+      python3 -m bot.report
   - name: Commit generated files to a branch
     env:
       TARGETS: ${{ steps.scn.outputs.scenarios }}
@@ -105,7 +115,7 @@ steps:
       deleted="$(printf '%s\n' "$changed" | grep -c '^D' || true)"
       summary="$added added, $modified modified, $deleted removed"
 
-      git commit -s -F - <<COMMIT_MSG || echo "no changes to commit"
+      cat > "$RUNNER_TEMP/commit-msg.txt" <<COMMIT_MSG
       docs-sync: parameter tables for $TARGETS
 
       $summary.
@@ -118,6 +128,12 @@ steps:
 
       $changed
       COMMIT_MSG
+
+      # Appended as a file, never as shell source. An Actions expression is
+      # substituted into the script before bash parses it, which is the real
+      # injection point here; a heredoc body is not.
+      cat "$RUNNER_TEMP/gaps.md" >> "$RUNNER_TEMP/commit-msg.txt" 2>/dev/null || true
+      git commit -s -F "$RUNNER_TEMP/commit-msg.txt" || echo "no changes to commit"
 
 network:
   allowed:

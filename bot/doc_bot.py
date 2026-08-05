@@ -6,15 +6,12 @@ from pathlib import Path
 
 from bot.parser import (extract_env_params, extract_krknctl_params,
                         build_skip_list, require_sources)
+from bot.describe import describe_fn
 from bot.descriptions import resolve_descriptions
 from bot.emitter import emit_data_file, load_previous
 from bot.report import write_report
 
 
-# Replaced by the model rung in a later task. Blank is a legal outcome and is
-# reported, so nothing here invents a description.
-def _no_descriptions(scenario, names):
-    return {}
 
 
 def _krknctl_records(scn):
@@ -41,7 +38,7 @@ def _published(website_root, scenario, source):
     return col("description"), col("type")
 
 
-def _emit_one(scenario, source, records, website_root, source_ref):
+def _emit_one(scenario, source, records, website_root, source_ref, scn):
     out = website_root / "data" / "params" / scenario / f"{source}.yaml"
     prev = load_previous(out)
     pub_desc, pub_type = _published(website_root, scenario, source)
@@ -54,9 +51,13 @@ def _emit_one(scenario, source, records, website_root, source_ref):
     published = {r.name: pub_desc[r.flag or r.name] for r in records
                  if (r.flag or r.name) in pub_desc}
     existing = {n: p.get("description", "") for n, p in prev.items()}
+    reasons = {}
     descs, gaps = resolve_descriptions(scenario, records, existing,
-                                       _no_descriptions, published=published)
+                                       describe_fn(scn, records, reasons),
+                                       published=published)
     emit_data_file(website_root, scenario, source, records, descs, source_ref)
+    # A rejection reason beats "nothing described it": the two need opposite fixes.
+    gaps = [(n, f, reasons.get(n, t) if f == "" else t) for n, f, t in gaps]
     # A published row no source produces is a whole row dropped, not a cell.
     ids = {r.flag or r.name for r in records}
     orphans = [(scenario, source, k, "orphan", "") for k in pub_desc if k not in ids]
@@ -85,11 +86,11 @@ def run(scenario, krkn_hub_root, website_root, krkn_root: str | Path = "krkn",
                     r.description_source = "krknctl"
                 if r.type is None:
                     r.type = match.type
-            gaps += _emit_one(scenario, "krkn-hub", recs, website_root, source_ref)
+            gaps += _emit_one(scenario, "krkn-hub", recs, website_root, source_ref, scn)
     if (scn / "krknctl-input.json").exists():
         recs = [r for r in extract_krknctl_params(scn / "krknctl-input.json") if r.name not in skip]
         if recs:
-            gaps += _emit_one(scenario, "krknctl", recs, website_root, source_ref)
+            gaps += _emit_one(scenario, "krknctl", recs, website_root, source_ref, scn)
     return gaps
 
 
