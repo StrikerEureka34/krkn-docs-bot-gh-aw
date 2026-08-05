@@ -73,6 +73,24 @@ def test_a_flag_identical_to_the_name_is_not_duplicated():
     assert "flag" not in p
 
 
+def test_a_secret_param_is_marked_in_the_data():
+    """The shortcode renders this as "string (secret)". Losing it strips the one
+    signal on the page that the value is a credential."""
+    recs = [ParamRecord(name="BMC_PASSWORD", flag="bmc-password",
+                        type="string", secret=True)]
+    p = yaml.safe_load(emit_data_text(
+        "node-scenarios", "krknctl", recs, {"BMC_PASSWORD": "IPMI password."},
+        "r"))["params"][0]
+    assert p["secret"] is True
+
+
+def test_a_non_secret_param_gains_no_key():
+    recs = [ParamRecord(name="ACTION", flag="action", type="string")]
+    p = yaml.safe_load(emit_data_text(
+        "node-scenarios", "krknctl", recs, {"ACTION": "Act."}, "r"))["params"][0]
+    assert "secret" not in p
+
+
 def test_output_is_deterministic():
     recs = [ParamRecord(name="A", default="1", type="number")]
     descs = {"A": "An a."}

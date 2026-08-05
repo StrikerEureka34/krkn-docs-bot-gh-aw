@@ -17,6 +17,7 @@ class ParamRecord:
     allowed_values: list[str] | None = None
     group: str | None = None  # krknctl-input.json "group", global params only
     flag: str | None = None   # krknctl CLI flag, e.g. cerberus-enabled
+    secret: bool = False      # krknctl "secret", keep the value off a command line
 
 
 EXPORT_LINE_RE = re.compile(r'^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$')
@@ -212,6 +213,8 @@ def extract_krknctl_params(path: Path) -> list[ParamRecord]:
             allowed_values=allowed,
             group=item.get("group"),
             flag=item.get("name"),
+            # The sources write the string "true", not a boolean.
+            secret=_as_bool(item.get("secret", "false")),
         ))
     return records
 

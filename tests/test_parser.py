@@ -348,6 +348,23 @@ def test_krknctl_params_carry_both_identifiers(tmp_path):
     assert rec.flag == "cerberus-enabled"
 
 
+def test_a_secret_krknctl_param_is_marked(tmp_path):
+    """26 entries across the sources carry secret, and a reader needs to know not
+    to put the value on a command line. The field is the string "true", so a
+    truthiness check would also accept "false"."""
+    f = tmp_path / "krknctl-input.json"
+    f.write_text('[{"name": "bmc-password", "variable": "BMC_PASSWORD", '
+                 '"type": "string", "secret": "true"}, '
+                 '{"name": "not-secret", "variable": "NOT_SECRET", '
+                 '"type": "string", "secret": "false"}, '
+                 '{"name": "label-selector", "variable": "LABEL_SELECTOR", '
+                 '"type": "string"}]', encoding="utf-8")
+    recs = {r.name: r for r in extract_krknctl_params(f)}
+    assert recs["BMC_PASSWORD"].secret is True
+    assert recs["NOT_SECRET"].secret is False
+    assert recs["LABEL_SELECTOR"].secret is False
+
+
 def test_krknctl_group_descriptors_are_not_params(tmp_path):
     """A "type": "Group" entry names a group and configures nothing."""
     f = tmp_path / "krknctl-input.json"

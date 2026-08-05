@@ -21,6 +21,9 @@ def _param_dict(rec, description, source, scenario):
         # flag set, so emitting both there would duplicate a key on every row.
         if rec.flag and rec.flag != rec.name:
             d["flag"] = rec.flag
+        # Only when true, so no row gains a key it does not need.
+        if rec.secret:
+            d["secret"] = True
         if rec.allowed_values:
             d["possible_values"] = list(rec.allowed_values)
         # No global param is required, so the column would be one value repeated.
