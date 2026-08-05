@@ -17,6 +17,7 @@ from pathlib import Path
 from bot.parser import extract_env_params, extract_krknctl_params, require_sources
 from bot.emitter import emit_data_file, load_descriptions
 from bot.descriptions import resolve_descriptions
+from bot.report import write_report
 
 GLOBAL_SCENARIO = "globals"
 OTHER_GROUP = "other"
@@ -75,22 +76,23 @@ def _published_globals(website_root):
 
 
 def emit(website_root, krkn_hub_root, krkn_root, source_ref="HEAD"):
-    """Write data/params/globals/<source>.yaml, one file per source. Returns the
-    paths written. Every param carries its group and the page's shortcode filters
-    on it, so a new upstream group costs no new file."""
+    """Write data/params/globals/<source>.yaml, one file per source. Returns
+    (paths written, gaps). Every param carries its group and the page's shortcode
+    filters on it, so a new upstream group costs no new file."""
     ctl, env = build_groups(krkn_hub_root, krkn_root)
     published = _published_globals(website_root)
-    written = []
+    written, gaps = [], []
     for source, records in (("krknctl", ctl), ("krkn-hub", env)):
         # Group order is stable so regenerating twice is byte identical.
         ordered = [r for _, rs in sorted(_by_group(records).items()) for r in rs]
         existing = load_descriptions(
             Path(website_root) / "data/params" / GLOBAL_SCENARIO / f"{source}.yaml")
-        descs, _ = resolve_descriptions(GLOBAL_SCENARIO, ordered, existing,
+        descs, g = resolve_descriptions(GLOBAL_SCENARIO, ordered, existing,
                                         _no_descriptions, published=published[source])
+        gaps += [(GLOBAL_SCENARIO, source) + x for x in g]
         written.append(
             emit_data_file(website_root, GLOBAL_SCENARIO, source, ordered, descs, source_ref))
-    return written
+    return written, gaps
 
 
 _PAGES = (
@@ -134,8 +136,10 @@ def main() -> None:
                          "param-table calls")
     args = ap.parse_args()
     require_sources(args.krkn_hub, args.krkn)
-    for path in emit(args.website, args.krkn_hub, args.krkn, args.source_ref):
+    written, gaps = emit(args.website, args.krkn_hub, args.krkn, args.source_ref)
+    for path in written:
         print(path)
+    write_report(gaps)
     if args.scaffold:
         for line in scaffold(args.website, args.krkn_hub, args.krkn):
             print(line)

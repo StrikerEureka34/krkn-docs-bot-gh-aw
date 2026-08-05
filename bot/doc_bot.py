@@ -8,10 +8,11 @@ from bot.parser import (extract_env_params, extract_krknctl_params,
                         build_skip_list, require_sources)
 from bot.descriptions import resolve_descriptions
 from bot.emitter import emit_data_file, load_previous
+from bot.report import write_report
 
 
-# Descriptions for new params are written by the gh-aw agent, so extraction stays
-# deterministic and leaves them blank here.
+# Replaced by the model rung in a later task. Blank is a legal outcome and is
+# reported, so nothing here invents a description.
 def _no_descriptions(scenario, names):
     return {}
 
@@ -26,9 +27,8 @@ def _krknctl_records(scn):
 
 
 def _published(website_root, scenario, source):
-    """description and type cells from the hand-written table the shortcode is
-    about to replace, keyed the way that page keys them. Page directory names
-    diverge from scenario names, so _find_tab resolves it rather than a join."""
+    """description and type cells from the table the shortcode is about to
+    replace. Page directory names diverge from scenario names, hence _find_tab."""
     from bot.scaffold import _find_tab, published_cell, published_table
     tab = _find_tab(website_root, scenario, source)
     if tab is None:
@@ -57,7 +57,10 @@ def _emit_one(scenario, source, records, website_root, source_ref):
     descs, gaps = resolve_descriptions(scenario, records, existing,
                                        _no_descriptions, published=published)
     emit_data_file(website_root, scenario, source, records, descs, source_ref)
-    return [(scenario, source) + g for g in gaps]
+    # A published row no source produces is a whole row dropped, not a cell.
+    ids = {r.flag or r.name for r in records}
+    orphans = [(scenario, source, k, "orphan", "") for k in pub_desc if k not in ids]
+    return [(scenario, source) + g for g in gaps] + orphans
 
 
 def run(scenario, krkn_hub_root, website_root, krkn_root: str | Path = "krkn",
@@ -109,7 +112,8 @@ def main():
         p.error("a scenario is required (via --scenario or payload)")
 
     require_sources(krkn_hub_root, krkn_root)
-    run(scenario, krkn_hub_root, website_root, krkn_root)
+    gaps = run(scenario, krkn_hub_root, website_root, krkn_root)
+    write_report(gaps)
     if args.scaffold:
         from bot.scaffold import scaffold_scenario
         scaffold_scenario(scenario, website_root)
