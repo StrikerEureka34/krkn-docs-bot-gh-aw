@@ -42,7 +42,7 @@ steps:
       if [ -n "$DISPATCH_SCENARIOS" ]; then
         scenarios="$DISPATCH_SCENARIOS"
       else
-        scenarios="$(printf '%s' "$COMMENT_BODY" | awk 'NR==1{print $2}')"
+        scenarios="$(printf '%s' "$COMMENT_BODY" | awk 'NR==1{$1="";print}')"
         if [ -z "$scenarios" ] && [ -n "$PR_NUMBER" ]; then
           scenarios="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' 2>/dev/null \
             | grep -oE 'data/params/[a-z0-9-]+/' | cut -d/ -f3 | sort -u | tr '\n' ' ')"
@@ -53,48 +53,71 @@ steps:
         echo "no scenario given" >&2
         exit 1
       fi
+      # Targets are scenario ids plus the literal "globals". Both fit a-z0-9-,
+      # so this guard stays exactly as strict as before.
       for s in $scenarios; do
         case "$s" in
           *[!a-z0-9-]*)
-            echo "invalid scenario: '$s'" >&2
+            echo "invalid target: '$s'" >&2
             exit 1 ;;
         esac
       done
       echo "scenarios=$scenarios" >> "$GITHUB_OUTPUT"
   - name: Install docs bot
     run: pip3 install "git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@main"
-  - name: Clone the parameter sources
-    run: |
-      # krkn-hub holds the per-scenario params, krkn the global ones. Both are
-      # needed even for a single scenario: the bot has to know which params are
-      # global so it can leave them out of that scenario's table.
-      git clone --depth 1 https://github.com/StrikerEureka34/krkn-hub.git "$RUNNER_TEMP/krkn-hub"
-      git clone --depth 1 https://github.com/StrikerEureka34/krkn.git "$RUNNER_TEMP/krkn"
+  - name: Clone krkn-hub source
+    run: git clone --depth 1 https://github.com/StrikerEureka34/krkn-hub.git "$RUNNER_TEMP/krkn-hub"
+  - name: Clone krkn source
+    # Global krknctl params live here. The bot refuses to run without it rather
+    # than silently emitting a degraded skip list.
+    run: git clone --depth 1 https://github.com/StrikerEureka34/krkn.git "$RUNNER_TEMP/krkn"
   - name: Generate parameter data and scaffold
     env:
       KRKN_HUB_PATH: ${{ runner.temp }}/krkn-hub
       KRKN_PATH: ${{ runner.temp }}/krkn
     run: |
-      for scenario in ${{ steps.scn.outputs.scenarios }}; do
-        echo "Generating: $scenario"
-        # "globals" is not a krkn-hub directory. Those params come from
-        # krkn-hub/env.sh and krkn/containers/krknctl-input.json, so they have
-        # their own entry point rather than a scenario folder to read.
-        if [ "$scenario" = "globals" ]; then
-          python3 -m bot.globals --krkn-hub "$KRKN_HUB_PATH" --krkn "$KRKN_PATH" --scaffold
-        else
-          python3 -m bot.doc_bot --scenario "$scenario" --scaffold
-        fi
+      for target in ${{ steps.scn.outputs.scenarios }}; do
+        echo "Generating: $target"
+        case "$target" in
+          globals)
+            # One file per source under data/params/globals/, then replace the
+            # tables on the two global pages with group-filtered shortcode calls.
+            python3 -m bot.globals --krkn-hub "$KRKN_HUB_PATH" --krkn "$KRKN_PATH" --scaffold ;;
+          *)
+            python3 -m bot.doc_bot --scenario "$target" --scaffold ;;
+        esac
       done
   - name: Commit generated files to a branch
     env:
-      SCENARIOS: ${{ steps.scn.outputs.scenarios }}
+      TARGETS: ${{ steps.scn.outputs.scenarios }}
     run: |
       git config user.name "krkn-docs-bot"
       git config user.email "krkn-docs-bot@users.noreply.github.com"
       git checkout -b "docs-sync-${{ github.run_number }}"
       git add -A
-      git commit -s -m "docs-sync: parameter tables for $SCENARIOS" || echo "no changes to commit"
+
+      # Everything a reviewer needs goes in the commit message, which is written
+      # here and never passes through the agent. The PR body stays short enough
+      # that a small model cannot mangle it.
+      changed="$(git diff --cached --name-status)"
+      added="$(printf '%s\n' "$changed" | grep -c '^A' || true)"
+      modified="$(printf '%s\n' "$changed" | grep -c '^M' || true)"
+      deleted="$(printf '%s\n' "$changed" | grep -c '^D' || true)"
+      summary="$added added, $modified modified, $deleted removed"
+
+      git commit -s -F - <<COMMIT_MSG || echo "no changes to commit"
+      docs-sync: parameter tables for $TARGETS
+
+      $summary.
+
+      Generated from:
+      - krkn-hub/env.sh and each scenario's krknctl-input.json
+      - krkn/containers/krknctl-input.json for the global parameters
+
+      These files are derived. Edit the source, not the table.
+
+      $changed
+      COMMIT_MSG
 
 network:
   allowed:
@@ -128,6 +151,19 @@ The triggering command was `${{ needs.pre_activation.outputs.matched_command }}`
 
 Call exactly one safe-output tool:
 - if the triggering command was `resync`, call `push_to_pull_request_branch` to update the existing pull request.
-- otherwise call `create_pull_request` with `branch` set to `docs-sync-${{ github.run_number }}`, a short title, and a body noting that the parameter data files and shortcode were regenerated from krkn-hub.
+- otherwise call `create_pull_request` with `branch` set to `docs-sync-${{ github.run_number }}`.
+
+Set `title` to exactly `Regenerate parameter tables` and `body` to exactly the three
+lines below. Copy them character for character. Do not summarise them, do not add a
+file list, do not add counts, do not add anything else.
+
+```
+Parameter tables regenerated from source. The commit message lists the targets, the file counts and the source files.
+
+These files are generated. Edit the source, not the table.
+```
+
+Every fact about this run already lives in the commit message, which was written
+deterministically and is visible in the diff. You do not need to restate it.
 
 You must call exactly one safe-output tool before finishing. Never read or log secrets.
