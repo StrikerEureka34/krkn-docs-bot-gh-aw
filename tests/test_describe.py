@@ -94,7 +94,7 @@ def test_the_memo_stops_a_second_call_for_the_same_param(tmp_path, monkeypatch):
     different sentences, so the tabs would disagree about the same parameter."""
     calls = []
 
-    def fake(scenario, names, ctx, transport=None):
+    def fake(scenario, names, ctx, transport=None, errors=None):
         calls.append(list(names))
         return {n: "Written once." for n in names}
 
@@ -107,9 +107,40 @@ def test_the_memo_stops_a_second_call_for_the_same_param(tmp_path, monkeypatch):
     assert calls == [["X"]]
 
 
+def test_a_failed_call_is_reported_as_unavailable_not_as_undescribed(tmp_path, monkeypatch):
+    """"The endpoint is broken" and "nothing describes it" need opposite fixes."""
+    def broken(scenario, names, ctx, transport=None, errors=None):
+        errors.append("endpoint returned HTTP 401")
+        return {}
+
+    monkeypatch.setattr("bot.describe.describe", broken)
+    reasons = {}
+    assert describe_fn(tmp_path, [ParamRecord(name="X")], reasons)("s", ["X"]) == {}
+    assert reasons["X"] == "model unavailable: endpoint returned HTTP 401"
+
+
+def test_an_http_error_names_the_status(monkeypatch):
+    import urllib.error
+
+    def boom(body):
+        raise urllib.error.HTTPError("u", 401, "Unauthorized", {}, None)
+
+    errors = []
+    assert describe("s", ["X"], CTX, transport=boom, errors=errors) == {}
+    assert errors == ["endpoint returned HTTP 401"]
+
+
+def test_a_missing_key_is_named(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    errors = []
+    assert describe("s", ["X"], CTX, errors=errors) == {}
+    assert errors == ["no OPENAI_API_KEY set"]
+
+
 def test_a_rejected_description_is_not_memoised(tmp_path, monkeypatch):
-    monkeypatch.setattr("bot.describe.describe",
-                        lambda s, n, c, transport=None: {x: "Configures port." for x in n})
+    monkeypatch.setattr(
+        "bot.describe.describe",
+        lambda s, n, c, transport=None, errors=None: {x: "Configures port." for x in n})
     reasons, memo = {}, {}
     fn = describe_fn(tmp_path, [ParamRecord(name="X")], reasons, memo)
     assert fn("s", ["X"]) == {}

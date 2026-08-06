@@ -95,7 +95,7 @@ def test_a_generated_description_is_cached_not_regenerated(tmp_path, monkeypatch
     the value from the file or every sync churns the diff."""
     calls = []
 
-    def fake(scenario, names, ctx, transport=None):
+    def fake(scenario, names, ctx, transport=None, errors=None):
         # No digits: validate() rejects a literal the source record does not have.
         calls.append(list(names))
         return {n: "Written by the model." for n in names}

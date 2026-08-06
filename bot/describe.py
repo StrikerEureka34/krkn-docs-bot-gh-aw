@@ -3,6 +3,8 @@ Python calls the model and writes the result, so nothing untrusted edits a file.
 import json
 import os
 import re
+import sys
+import urllib.error
 import urllib.request
 from dataclasses import asdict
 from pathlib import Path
@@ -94,12 +96,19 @@ def describe_fn(scn, records, reasons, memo=None):
         todo = [n for n in names if n not in memo]
         if not todo:
             return out
-        for name, text in describe(scenario, todo, context(scn, todo, records)).items():
+        errors = []
+        got = describe(scenario, todo, context(scn, todo, records), errors=errors)
+        for name, text in got.items():
             why = validate(text, asdict(by_name[name]))
             if why is None:
                 out[name] = memo[name] = text
             else:
                 reasons[name] = why
+        # "the model was never reached" and "nothing describes it" need opposite
+        # fixes, so the report must not collapse them into one message.
+        for n in todo:
+            if errors and n not in out:
+                reasons.setdefault(n, f"model unavailable: {errors[0]}")
         return out
     return fn
 
@@ -117,7 +126,16 @@ def _post(url, key, body):
         return json.loads(r.read())
 
 
-def describe(scenario, names, ctx, transport=None):
+def _fail(errors, msg):
+    """Fail soft but say so. A silent {} is indistinguishable from "nothing
+    described it", which makes a broken endpoint impossible to diagnose."""
+    print(f"describe: {msg}", file=sys.stderr)
+    if errors is not None:
+        errors.append(msg)
+    return {}
+
+
+def describe(scenario, names, ctx, transport=None, errors=None):
     """{name: sentence} for the names that produced text.
 
     Returns {} on any failure: non-200, malformed JSON, timeout, unreachable
@@ -129,7 +147,7 @@ def describe(scenario, names, ctx, transport=None):
     key = os.environ.get("OPENAI_API_KEY")
     if transport is None:
         if not key:
-            return {}
+            return _fail(errors, "no OPENAI_API_KEY set")
         url = base.rstrip("/") + "/chat/completions"
         transport = lambda body: _post(url, key, body)  # noqa: E731
     body = {"model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
@@ -139,10 +157,16 @@ def describe(scenario, names, ctx, transport=None):
                          {"role": "user",
                           "content": build_prompt(scenario, names, ctx)}]}
     try:
-        raw = json.loads(transport(body)["choices"][0]["message"]["content"])
-    except Exception:
-        return {}
+        payload = transport(body)
+    except urllib.error.HTTPError as e:
+        return _fail(errors, f"endpoint returned HTTP {e.code}")
+    except Exception as e:
+        return _fail(errors, f"endpoint unreachable ({type(e).__name__})")
+    try:
+        raw = json.loads(payload["choices"][0]["message"]["content"])
+    except Exception as e:
+        return _fail(errors, f"unexpected response shape ({type(e).__name__})")
     if not isinstance(raw, dict):
-        return {}
+        return _fail(errors, "response JSON was not an object")
     return {n: raw[n].strip() for n in names
             if isinstance(raw.get(n), str) and raw[n].strip()}
