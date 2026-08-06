@@ -126,6 +126,16 @@ def _post(url, key, body):
         return json.loads(r.read())
 
 
+def _body(err):
+    """The status alone names no cause: this endpoint answers 400 for an
+    unsupported model and 400 for a malformed body. The body says which."""
+    try:
+        text = " ".join(err.read().decode("utf-8", "replace").split())
+    except Exception:
+        text = ""
+    return text[:200] or "no body"
+
+
 def _fail(errors, msg):
     """Fail soft but say so. A silent {} is indistinguishable from "nothing
     described it", which makes a broken endpoint impossible to diagnose."""
@@ -159,7 +169,7 @@ def describe(scenario, names, ctx, transport=None, errors=None):
     try:
         payload = transport(body)
     except urllib.error.HTTPError as e:
-        return _fail(errors, f"endpoint returned HTTP {e.code}")
+        return _fail(errors, f"endpoint returned HTTP {e.code}: {_body(e)}")
     except Exception as e:
         return _fail(errors, f"endpoint unreachable ({type(e).__name__})")
     try:

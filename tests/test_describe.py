@@ -119,15 +119,32 @@ def test_a_failed_call_is_reported_as_unavailable_not_as_undescribed(tmp_path, m
     assert reasons["X"] == "model unavailable: endpoint returned HTTP 401"
 
 
-def test_an_http_error_names_the_status(monkeypatch):
+def test_an_http_error_names_the_status_and_the_body():
+    """The status alone is not actionable: this endpoint answers 400 for an
+    unsupported model and 400 for a malformed body."""
+    import io
     import urllib.error
 
-    def boom(body):
+    def boom(_):
+        raise urllib.error.HTTPError(
+            "u", 400, "Bad Request", {},
+            io.BytesIO(b'{"error":{"message":"The requested model\n is not supported."}}'))
+
+    errors = []
+    assert describe("s", ["X"], CTX, transport=boom, errors=errors) == {}
+    assert errors == ['endpoint returned HTTP 400: {"error":{"message":"The requested '
+                      'model is not supported."}}']
+
+
+def test_an_unreadable_error_body_still_names_the_status():
+    import urllib.error
+
+    def boom(_):
         raise urllib.error.HTTPError("u", 401, "Unauthorized", {}, None)
 
     errors = []
     assert describe("s", ["X"], CTX, transport=boom, errors=errors) == {}
-    assert errors == ["endpoint returned HTTP 401"]
+    assert errors == ["endpoint returned HTTP 401: no body"]
 
 
 def test_a_missing_key_is_named(monkeypatch):
