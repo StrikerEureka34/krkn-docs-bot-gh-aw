@@ -99,6 +99,37 @@ def published_cell(rows, name, column):
     return cells[i] if 0 <= i < len(cells) else ""
 
 
+def _group_call(source, group):
+    # krknctl stores bare flag names but a reader types --telemetry-enabled.
+    prefix = ' prefix="--"' if source == "krknctl" else ""
+    return (f'{{{{< param-table scenario="{GLOBAL_SCENARIO}" '
+            f'source="{source}" group="{group}"{prefix} >}}}}')
+
+
+def _slug(heading):
+    return re.sub(r"[^a-z0-9]+", "_", heading.strip().lower()).strip("_")
+
+
+def page_section_groups(text):
+    """{parameter: section slug} for every hand-written table on a global page.
+
+    env.sh carries no grouping, so the krkn-hub page's own sections are the
+    grouping for it. krknctl groups describe the other page's layout."""
+    lines = text.splitlines()
+    heads = {i: _slug(ln[3:]) for i, ln in enumerate(lines) if ln.startswith("## ")}
+    out = {}
+    for header, _end, rows in _tables(lines):
+        above = [i for i in heads if i < header]
+        if not above:
+            continue
+        slug = heads[max(above)]
+        for r in rows:
+            name = _first_cell(lines[r])
+            if name:
+                out.setdefault(name, slug)
+    return out
+
+
 def inject_global_shortcodes(text, source, name_to_group):
     """Replace each parameter table on a global page with a group-filtered
     param-table call, deriving the group from the table's own rows.
@@ -118,12 +149,14 @@ def inject_global_shortcodes(text, source, name_to_group):
         names = [n for n in (_first_cell(lines[r]) for r in rows) if n]
         if not names:
             continue
-        unknown = [n for n in names if n not in name_to_group]
-        if unknown:
+        # A row no source produces is a dropped param, reported separately. It
+        # must not veto the table, or one stale row freezes a whole section.
+        known = [n for n in names if n in name_to_group]
+        if not known:
             resolved.append((header, end, names, None,
-                             f"unknown params, left alone: {', '.join(unknown[:4])}"))
+                             f"no known params, left alone: {', '.join(names[:4])}"))
             continue
-        groups = {name_to_group[n] for n in names}
+        groups = {name_to_group[n] for n in known}
         if len(groups) != 1:
             resolved.append((header, end, names, None,
                              f"mixed groups {sorted(groups)}, left alone"))
@@ -141,16 +174,23 @@ def inject_global_shortcodes(text, source, name_to_group):
             report.append(f"group {group} split across {claims[group]} sections, "
                           "left alone to avoid showing params twice")
             continue
-        # krknctl stores bare flag names but a reader types --telemetry-enabled.
-        # krkn-hub params are env vars and take no prefix.
-        prefix = ' prefix="--"' if source == "krknctl" else ""
-        call = (f'{{{{< param-table scenario="{GLOBAL_SCENARIO}" '
-                f'source="{source}" group="{group}"{prefix} >}}}}\n')
-        edits.append((header, end, call))
+        edits.append((header, end, _group_call(source, group) + "\n"))
         report.append(f"{group}: replaced {len(names)} rows")
 
     for header, end, call in reversed(edits):
         lines[header:end] = [call]
+
+    # A group no section renders is a param the reader never sees. Appending a
+    # section is the whole point of the bot: surface the drift, do not hide it.
+    shown = set(re.findall(r'group="([^"]+)"', text)) | set(claims)
+    stranded = {n for _, _, ns, g, why in resolved if why for n in ns}
+    for group in sorted(set(name_to_group.values()) - shown):
+        if any(name_to_group.get(n) == group for n in stranded):
+            continue
+        lines += ["\n---\n\n", f"## {group.replace('_', ' ').title()}\n\n",
+                  "Parameters found in the source that no section above covers.\n\n",
+                  _group_call(source, group) + "\n"]
+        report.append(f"{group}: added a section, no table claimed it")
     return "".join(lines), report
 
 
