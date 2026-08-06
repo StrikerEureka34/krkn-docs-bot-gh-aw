@@ -216,3 +216,20 @@ def test_emit_then_reemit_is_byte_identical(tmp_path):
     # on every run. The resolver is a no-op here, so the bytes still match.
     doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
     assert out.read_text(encoding="utf-8") == first
+
+
+def test_an_env_comment_reaches_the_krknctl_tab_too(tmp_path):
+    """Otherwise a maintainer follows the report's advice, adds the comment, and
+    the next report still calls the param blank on the other tab."""
+    hub = tmp_path / "hub"
+    scn = hub / "node-scenarios"
+    scn.mkdir(parents=True)
+    (scn / "env.sh").write_text(
+        'export FOO=${FOO:=1}   # Seconds to wait before giving up\n', encoding="utf-8")
+    (scn / "krknctl-input.json").write_text(
+        '[{"name": "foo", "variable": "FOO", "type": "number"}]', encoding="utf-8")
+    website = _site(tmp_path)
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    for source in ("krkn-hub", "krknctl"):
+        rows = _params(website, "node-scenarios", source)
+        assert rows["FOO"]["description"] == "Seconds to wait before giving up", source
