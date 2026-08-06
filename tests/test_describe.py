@@ -191,3 +191,13 @@ def test_the_real_model_output_for_retry_wait_passes():
     """What gpt-4o-mini actually returned for globals/RETRY_WAIT."""
     assert validate("Time to wait before retrying an operation.",
                     {"name": "RETRY_WAIT", "default": "120"}) is None
+
+
+@pytest.mark.parametrize("content", [
+    '{"X": "Plain."}',
+    '```json\n{"X": "Plain."}\n```',
+    '```\n{"X": "Plain."}\n```',
+])
+def test_a_fenced_reply_parses(content):
+    """Without response_format the model may wrap the object in a code fence."""
+    assert describe("s", ["X"], CTX, transport=reply(content)) == {"X": "Plain."}

@@ -117,11 +117,7 @@ def _post(url, key, body):
     req = urllib.request.Request(
         url, data=json.dumps(body).encode("utf-8"), method="POST",
         headers={"Authorization": f"Bearer {key}",
-                 "Content-Type": "application/json",
-                 # Copilot rejects the call without these; other OpenAI-compatible
-                 # endpoints ignore them, so switching stays two env vars.
-                 "Copilot-Integration-Id": "vscode-chat",
-                 "Editor-Version": "krkn-docs-bot/1.0"})
+                 "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
         return json.loads(r.read())
 
@@ -134,6 +130,13 @@ def _body(err):
     except Exception:
         text = ""
     return text[:200] or "no body"
+
+
+def _unfence(text):
+    """Strip a markdown fence. The prompt asks for bare JSON, but response_format
+    is not portable across endpoints, so a fence cannot be ruled out."""
+    text = text.strip()
+    return text.partition("\n")[2].rsplit("```", 1)[0] if text.startswith("```") else text
 
 
 def _fail(errors, msg):
@@ -153,16 +156,17 @@ def describe(scenario, names, ctx, transport=None, errors=None):
     reported, so a failed call never fails the run."""
     if not names:
         return {}
-    base = os.environ.get("OPENAI_BASE_URL", "https://api.githubcopilot.com")
+    base = os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")
     key = os.environ.get("OPENAI_API_KEY")
     if transport is None:
         if not key:
             return _fail(errors, "no OPENAI_API_KEY set")
         url = base.rstrip("/") + "/chat/completions"
         transport = lambda body: _post(url, key, body)  # noqa: E731
-    body = {"model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+    # No response_format: some endpoints reject the field outright, and the reply
+    # is parsed with json.loads either way.
+    body = {"model": os.environ.get("OPENAI_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free"),
             "temperature": 0,
-            "response_format": {"type": "json_object"},
             "messages": [{"role": "system", "content": _SYSTEM},
                          {"role": "user",
                           "content": build_prompt(scenario, names, ctx)}]}
@@ -173,7 +177,7 @@ def describe(scenario, names, ctx, transport=None, errors=None):
     except Exception as e:
         return _fail(errors, f"endpoint unreachable ({type(e).__name__})")
     try:
-        raw = json.loads(payload["choices"][0]["message"]["content"])
+        raw = json.loads(_unfence(payload["choices"][0]["message"]["content"]))
     except Exception as e:
         return _fail(errors, f"unexpected response shape ({type(e).__name__})")
     if not isinstance(raw, dict):

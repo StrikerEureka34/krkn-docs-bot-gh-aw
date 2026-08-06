@@ -77,11 +77,11 @@ steps:
       KRKN_PATH: ${{ runner.temp }}/krkn
       GH_AW_REPORT_DIR: ${{ runner.temp }}
       # Custom steps run before the firewall is installed, so this needs no
-      # network.allowed entry. The token is the one gh-aw already validates and
-      # deliberately keeps out of the agent sandbox.
-      OPENAI_BASE_URL: https://api.githubcopilot.com
-      OPENAI_API_KEY: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-      OPENAI_MODEL: gpt-4o-mini
+      # network.allowed entry. Any OpenAI-compatible endpoint works; pointing at
+      # the self-hosted model later is these three values and nothing else.
+      OPENAI_BASE_URL: https://openrouter.ai/api/v1
+      OPENAI_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OPENAI_MODEL: nvidia/nemotron-3-nano-30b-a3b:free
     run: |
       for target in ${{ steps.scn.outputs.scenarios }}; do
         echo "Generating: $target"
