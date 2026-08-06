@@ -18,6 +18,9 @@ class ParamRecord:
     group: str | None = None  # krknctl-input.json "group", global params only
     flag: str | None = None   # krknctl CLI flag, e.g. cerberus-enabled
     secret: bool = False      # krknctl "secret", keep the value off a command line
+    # Wording from the other source, for a param this one does not describe. Kept
+    # apart from description so it cannot outrank the curated published table.
+    borrowed_description: str | None = None
 
 
 EXPORT_LINE_RE = re.compile(r'^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)=(.*)$')

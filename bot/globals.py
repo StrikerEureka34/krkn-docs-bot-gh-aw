@@ -79,8 +79,7 @@ def build_groups(krkn_hub_root, krkn_root, website_root=None):
                    or OTHER_GROUP)
         # An inline comment in env.sh is krkn-hub's own wording, so it wins.
         if not r.description and match and match.description:
-            r.description = match.description
-            r.description_source = "krknctl"
+            r.borrowed_description = match.description
     return ctl, env
 
 
@@ -116,7 +115,10 @@ def emit(website_root, krkn_hub_root, krkn_root, source_ref="HEAD"):
         ordered = [r for _, rs in sorted(_by_group(records).items()) for r in rs]
         prev = load_previous(
             Path(website_root) / "data/params" / GLOBAL_SCENARIO / f"{source}.yaml")
-        existing = {n: p.get("description", "") for n, p in prev.items()}
+        # A borrow is re-derived every run, so a curated page row can still
+        # overtake it. Kept, it would freeze krknctl's wording forever.
+        existing = {n: p.get("description", "") for n, p in prev.items()
+                    if p.get("description_source") != "krknctl"}
         # The published table is read once, by the run that replaces it. Without
         # this the provenance marker vanishes on the next run.
         for r in ordered:

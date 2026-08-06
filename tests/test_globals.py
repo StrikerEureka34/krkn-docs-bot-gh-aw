@@ -70,16 +70,29 @@ def test_every_group_table_on_the_global_page_is_read(tmp_path):
     assert rows["PORT"]["description"] == "From table two"
 
 
-def test_a_global_source_description_still_wins(tmp_path):
+def test_the_published_page_outranks_the_other_source(tmp_path):
+    """The page is the only human-written rung. krknctl says "Enables Cerberus
+    Support"; the page says when to set it, and elsewhere carries links."""
     hub, krkn = _sources(tmp_path, CERBERUS, CTL)
     website = tmp_path / "site"
     _global_page(website,
                  "Parameter | Description\n--------- | -----------\n"
-                 "`CERBERUS_ENABLED` | stale page wording\n")
+                 "`CERBERUS_ENABLED` | Set this to true if cerberus monitors the cluster\n")
+    g.emit(website, hub, krkn)
+    rows = {r["name"]: r for r in _rows(website, "krkn-hub")}
+    assert rows["CERBERUS_ENABLED"]["description"] == \
+        "Set this to true if cerberus monitors the cluster"
+    assert rows["CERBERUS_ENABLED"]["description_source"] == "published-table"
+
+
+def test_the_other_source_fills_a_param_the_page_never_listed(tmp_path):
+    hub, krkn = _sources(tmp_path, CERBERUS, CTL)
+    website = tmp_path / "site"
+    _global_page(website, "No table here.\n")
     g.emit(website, hub, krkn)
     rows = {r["name"]: r for r in _rows(website, "krkn-hub")}
     assert rows["CERBERUS_ENABLED"]["description"] == "Enables Cerberus Support"
-    assert "description_source" not in rows["CERBERUS_ENABLED"]
+    assert rows["CERBERUS_ENABLED"]["description_source"] == "krknctl"
 
 
 def test_env_export_borrows_its_group_from_the_join(tmp_path):
@@ -91,7 +104,7 @@ def test_env_export_borrows_its_group_from_the_join(tmp_path):
 def test_env_export_borrows_a_description_when_it_has_no_comment(tmp_path):
     hub, krkn = _sources(tmp_path, CERBERUS, CTL)
     _, env = g.build_groups(hub, krkn)
-    assert env[0].description == "Enables Cerberus Support"
+    assert env[0].borrowed_description == "Enables Cerberus Support"
 
 
 def test_own_comment_beats_the_joined_description(tmp_path):

@@ -172,9 +172,26 @@ def test_source_wins_over_the_committed_file(tmp_path):
         "params:\n- name: FOO\n  description: hand written desc\n  default: x\n",
         encoding="utf-8")
     doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
-    # Was "hand written desc". The file says "Do not edit by hand", so letting
-    # it beat the source froze descriptions at first generation.
-    assert _params(website, "node-scenarios")["FOO"]["description"] == "from json"
+    # krknctl is the other tab's source, so it ranks below the committed file.
+    # A borrow it did write is marked and dropped, so it never freezes.
+    assert _params(website, "node-scenarios")["FOO"]["description"] == "hand written desc"
+
+
+def test_a_borrowed_description_does_not_freeze(tmp_path):
+    """Marked as a borrow, so the next run re-derives it and a better krknctl
+    line reaches the docs instead of the file pinning the first one."""
+    hub = tmp_path / "hub"
+    scn = hub / "node-scenarios"
+    scn.mkdir(parents=True)
+    (scn / "env.sh").write_text('export FOO="${FOO:-x}"\n', encoding="utf-8")
+    ctl = scn / "krknctl-input.json"
+    ctl.write_text('[{"variable": "FOO", "description": "first"}]', encoding="utf-8")
+    website = _site(tmp_path)
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    assert _params(website, "node-scenarios")["FOO"]["description_source"] == "krknctl"
+    ctl.write_text('[{"variable": "FOO", "description": "second"}]', encoding="utf-8")
+    doc_bot.run(scenario="node-scenarios", krkn_hub_root=hub, website_root=website)
+    assert _params(website, "node-scenarios")["FOO"]["description"] == "second"
 
 
 def _write_env(scn_dir):

@@ -121,11 +121,20 @@ def test_provenance_is_written_for_a_non_source_description():
 def test_a_source_description_records_no_provenance():
     """The field marks only fallbacks, so one grep finds every description that
     did not come from a source file."""
-    for src in (None, "env-comment", "krknctl"):
+    for src in (None, "env-comment"):
         recs = [ParamRecord(name="X", description_source=src)]
         p = yaml.safe_load(emit_data_text(
             "s", "krkn-hub", recs, {"X": "Text."}, "r"))["params"][0]
         assert "description_source" not in p
+
+
+def test_a_borrow_from_the_other_source_is_recorded():
+    """Unmarked, the next run cannot tell it from curated prose, and keeping it
+    would stop a published table or a better krknctl line ever replacing it."""
+    recs = [ParamRecord(name="X", description_source="krknctl")]
+    p = yaml.safe_load(emit_data_text(
+        "s", "krkn-hub", recs, {"X": "Text."}, "r"))["params"][0]
+    assert p["description_source"] == "krknctl"
 
 
 def test_the_read_back_returns_type_and_provenance(tmp_path):

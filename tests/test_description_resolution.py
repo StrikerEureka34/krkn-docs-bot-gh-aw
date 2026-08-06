@@ -68,10 +68,20 @@ def test_a_source_description_still_wins_over_the_published_one():
     assert gaps == []
 
 
-def test_the_existing_file_still_wins_over_the_published_one():
+def test_the_published_page_wins_over_the_existing_file():
+    """Both only coexist while a page is still being migrated. The page is the
+    human-written one, and the file would otherwise shadow it forever."""
     recs = [ParamRecord(name="X")]
     out, _ = resolve_descriptions("scn", recs, {"X": "from yaml"}, fake_llm,
                                   published={"X": "from page"})
+    assert out["X"] == "from page"
+
+
+def test_the_existing_file_wins_over_the_other_source():
+    """Once the page is converted its prose survives only in the file, so a
+    borrow must not overwrite it on the next run."""
+    recs = [ParamRecord(name="X", borrowed_description="from krknctl")]
+    out, _ = resolve_descriptions("scn", recs, {"X": "from yaml"}, fake_llm)
     assert out["X"] == "from yaml"
 
 

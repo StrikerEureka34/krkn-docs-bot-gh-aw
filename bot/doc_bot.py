@@ -50,7 +50,9 @@ def _emit_one(scenario, source, records, website_root, source_ref, scn, memo):
             r.description_source = prev.get(r.name, {}).get("description_source")
     published = {r.name: pub_desc[r.flag or r.name] for r in records
                  if (r.flag or r.name) in pub_desc}
-    existing = {n: p.get("description", "") for n, p in prev.items()}
+    # A borrow is re-derived every run so a curated page row can overtake it.
+    existing = {n: p.get("description", "") for n, p in prev.items()
+                if p.get("description_source") != "krknctl"}
     reasons = {}
     descs, gaps = resolve_descriptions(scenario, records, existing,
                                        describe_fn(scn, records, reasons, memo),
@@ -83,8 +85,7 @@ def run(scenario, krkn_hub_root, website_root, krkn_root: str | Path = "krkn",
                 if match is None:
                     continue
                 if not r.description and match.description:
-                    r.description = match.description
-                    r.description_source = "krknctl"
+                    r.borrowed_description = match.description
                 if r.type is None:
                     r.type = match.type
             gaps += _emit_one(scenario, "krkn-hub", recs, website_root, source_ref, scn, memo)
