@@ -2,12 +2,10 @@
 """Generate the two global parameter pages from their sources.
 
 krknctl globals come from krkn/containers/krknctl-input.json, which carries a
-"group" field and is displayed by CLI flag name. krkn-hub globals come from
-krkn-hub/env.sh, which has no grouping of its own: it borrows one by joining each
-export name against the krknctl "variable" field. Exports that do not join land
-in a single "other" group.
-
-Section headings and their order live in the website page, not here.
+"group" and is displayed by CLI flag name. krkn-hub globals come from
+krkn-hub/env.sh, which has no grouping: it borrows one by joining each export
+name against the krknctl "variable" field, and exports that do not join land in
+"other". Section headings and their order live in the website page, not here.
 """
 import argparse
 from collections import Counter, defaultdict

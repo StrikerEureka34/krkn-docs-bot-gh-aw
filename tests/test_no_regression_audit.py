@@ -15,7 +15,7 @@ import yaml
 
 from bot import globals as g
 from bot.doc_bot import run
-from bot.scaffold import _find_tab, published_cell, published_table
+from bot.scaffold import find_tab, published_cell, published_table
 
 _SYNC = Path(__file__).resolve().parents[3]
 WEBSITE = Path(os.environ.get("WEBSITE_REPO", _SYNC / "website"))
@@ -59,11 +59,20 @@ def _generated(root, scenario, source):
     return {r.get("flag") or r["name"]: r for r in rows}
 
 
+# Use-case pages carry a real scenario's marker, so the bot refuses to guess
+# which page to convert. Tracked as krkn-chaos/website#566.
+AMBIGUOUS = {"node-network-filter", "pod-network-filter", "pod-network-chaos"}
+
+
 @pytest.mark.parametrize("source", ["krkn-hub", "krknctl"])
 def test_no_published_description_or_type_goes_blank(source, seeded):
-    checked, lost = 0, []
+    checked, lost, ambiguous = 0, [], []
     for scenario in sorted(p.parent.name for p in HUB.glob("*/env.sh")):
-        tab = _find_tab(seeded, scenario, source)
+        try:
+            tab = find_tab(seeded, scenario, source)
+        except ValueError:
+            ambiguous.append(scenario)
+            continue
         if tab is None:
             continue
         rows = published_table(tab.read_text(encoding="utf-8"))
@@ -81,6 +90,8 @@ def test_no_published_description_or_type_goes_blank(source, seeded):
                     lost.append(f"{scenario}/{name}: {col}")
     assert checked > 100, f"only {checked} rows compared, the corpus did not load"
     assert lost == []
+    # Shrinks as website#566 is fixed. A new name here is a new duplicate marker.
+    assert set(ambiguous) <= AMBIGUOUS, f"new ambiguous markers: {set(ambiguous) - AMBIGUOUS}"
 
 
 def test_no_published_global_description_goes_blank(seeded):

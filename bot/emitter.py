@@ -32,10 +32,10 @@ def _param_dict(rec, description, source, scenario):
             d["secret"] = True
         if rec.allowed_values:
             d["possible_values"] = list(rec.allowed_values)
-        # No global param is required, so the column would be one value repeated.
-        # Scenario tables mix True and False, so it stays there.
-        if scenario != "globals":
-            d["required"] = bool(rec.required)
+    # env.sh marks required with a bodyless ${VAR}, so both sources carry it.
+    # Globals are all optional, so there the column would be one value repeated.
+    if scenario != "globals":
+        d["required"] = bool(rec.required)
     return d
 
 

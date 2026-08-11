@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """Report-only parameter drift scanner for the krkn-hub and krknctl sources.
 
-For each documented scenario it compares the params in the source files
-(env.sh, krknctl-input.json) against the committed data/params table and reports
-a missing table, or missing / stale / extra params, one finding per source so the
-report can link the exact file. It writes nothing to the docs.
-
-The report renders as a rolling docs-drift issue, a checklist grouped by scenario,
-with a direct file link and a suggested fix per finding. No em dashes anywhere.
-Fixing is done by commenting /fix <scenario> on the issue.
+For each documented scenario it compares the source files (env.sh,
+krknctl-input.json) against the committed data/params table and reports a
+missing table, or missing / stale / extra params, one finding per source so it
+can link the exact file. It writes nothing to the docs: the report is a rolling
+docs-drift issue, and fixing is done by commenting /fix <scenario> on it.
 """
 import argparse
 import re
@@ -19,7 +16,7 @@ from pathlib import Path
 import yaml
 
 from bot.parser import (extract_env_params, extract_krknctl_params,
-                        build_skip_list, require_sources)
+                        build_skip_list, is_global, require_sources)
 
 _MARKER_RE = re.compile(r'<krkn-hub-scenario\s+id="([^"]+)"')
 _SOURCES = (("krkn-hub", "env.sh"), ("krknctl", "krknctl-input.json"))
@@ -48,18 +45,13 @@ def find_scenarios(website_root) -> list[str]:
     return sorted(ids)
 
 
-def _skip(krkn_hub_root, krkn_root) -> set[str]:
-    """Global params come from the sources now, not from all-scenario-env.md."""
-    return build_skip_list(krkn_hub_root, krkn_root)
-
-
-def _source_params(scn_dir: Path, source: str, filename: str, skip: set[str]):
+def _source_params(scn_dir: Path, source: str, filename: str, skip: dict):
     """name -> ParamRecord for one source, or None if that source is absent."""
     f = scn_dir / filename
     if not f.exists():
         return None
     recs = extract_env_params(f) if source == "krkn-hub" else extract_krknctl_params(f)
-    return {r.name: r for r in recs if r.name not in skip}
+    return {r.name: r for r in recs if not is_global(r, skip)}
 
 
 def _table_rows(table_path: Path):
@@ -88,7 +80,7 @@ def scenario_findings(scenario, krkn_hub_root, website_root, hub_url=_DEFAULT_HU
                       krkn_root="krkn"):
     krkn_hub_root, website_root = Path(krkn_hub_root), Path(website_root)
     scn_dir = krkn_hub_root / scenario
-    skip = _skip(krkn_hub_root, krkn_root)
+    skip = build_skip_list(krkn_hub_root, krkn_root)
     findings = []
     for source, filename in _SOURCES:
         src = _source_params(scn_dir, source, filename, skip)

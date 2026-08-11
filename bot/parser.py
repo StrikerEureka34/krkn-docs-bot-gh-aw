@@ -149,12 +149,9 @@ _REF_RE = re.compile(r'^\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)
 def _resolve_references(records: dict) -> None:
     """Replace a default that is only a pointer at another variable.
 
-    env.sh has RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}. A literal
-    "$ALERTS_PATH" in a docs table tells a reader nothing, so look up the sibling
-    it names. No sibling means no default, which beats printing a shell fragment.
-
-    Follows chains, so A -> $B -> $C -> "x" gives every one of them "x". A single
-    pass would leave A holding "$C" or "x" depending on declaration order.
+    "$ALERTS_PATH" in a docs table tells a reader nothing, so look up the
+    sibling it names. No sibling means no default. Follows chains, since a
+    single pass would resolve them in declaration order.
     """
     def resolve(name, seen):
         rec = records.get(name)
@@ -222,19 +219,30 @@ def extract_krknctl_params(path: Path) -> list[ParamRecord]:
     return records
 
 
-def build_skip_list(krkn_hub_root, krkn_root) -> set[str]:
-    """Global params, which a per-scenario table must not repeat.
+# Set by the run.sh wrapper, not declared in either source.
+_INFRA_NAMES = {"SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"}
+
+
+def build_skip_list(krkn_hub_root, krkn_root) -> dict[str, str | None]:
+    """Global params and their defaults, for is_global().
     Tolerant of a missing source so tests can use small fixtures; CLI entry
     points call require_sources() first."""
-    names: set[str] = set()
+    out: dict[str, str | None] = {}
     env = Path(krkn_hub_root) / "env.sh"
     if env.exists():
-        names |= {r.name for r in extract_env_params(env)}
+        out |= {r.name: r.default for r in extract_env_params(env)}
     ctl = Path(krkn_root) / "containers/krknctl-input.json"
     if ctl.exists():
-        names |= {r.name for r in extract_krknctl_params(ctl)}
-    # Set by the run.sh wrapper, not declared in either source.
-    return names | {"SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"}
+        out |= {r.name: r.default for r in extract_krknctl_params(ctl)}
+    return out
+
+
+def is_global(record, skip) -> bool:
+    """True when a per-scenario table must not repeat this param. A scenario
+    that overrides the default documents its own value, so it is kept."""
+    if record.name in _INFRA_NAMES:
+        return True
+    return record.name in skip and record.default == skip[record.name]
 
 
 def require_sources(krkn_hub_root, krkn_root) -> None:

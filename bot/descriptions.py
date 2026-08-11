@@ -5,26 +5,12 @@ def resolve_descriptions(scenario, records, existing, llm_fn, published=None):
     """Return (descriptions_by_name, gaps).
 
     Priority: source -> published table -> existing file -> other source -> LLM.
-
-    The published table sits second because it is the one rung written by a
-    human. Its prose is fuller than the other source's and carries links, so a
-    run that replaced it with krknctl's one-liner would downgrade the page.
-    It only ever wins once: the run that reads it also removes it.
-
-    The old order put existing first, to protect hand-edits. But the file it
-    protected is stamped "Do not edit by hand", so all it did was freeze wording
-    at first generation: a better description in krknctl-input.json never
-    reached the docs. Every other field already takes the source as truth.
-
-    published is the hand-written table the shortcode is about to replace, the
-    last place a curated description survives. Only description and type are
-    carried; a published default that disagrees with env.sh is drift, not a
-    fallback.
+    The published table ranks second because a human wrote it, and it wins only
+    once: the run that reads it also removes it.
 
     gaps is (name, filled_from, text) for every description not taken from a
-    source file, where filled_from is "published-table", "llm", or "" with the
-    reason in text. The existing-file rung is not a gap: it was reported on the
-    run that first wrote it.
+    source file. The existing-file rung is not a gap, it was reported when it
+    was first written.
     """
     published = published or {}
     out, gaps, residual = {}, [], []

@@ -14,10 +14,10 @@ def test_krkn_hub_omits_absent_optional_fields():
     assert data["source_repo"] == "krkn-hub"
     assert data["source_ref"] == "abc123"
     assert data["params"][0] == {
-        "name": "ACTION", "description": "Action to run.", "type": "enum", "default": "node_stop",
+        "name": "ACTION", "description": "Action to run.", "type": "enum",
+        "default": "node_stop", "required": False,
     }
     assert "default" not in data["params"][1]
-    assert "required" not in data["params"][0]
 
 
 def test_group_is_emitted_when_present():
@@ -154,3 +154,12 @@ def test_the_read_back_returns_type_and_provenance(tmp_path):
 
 def test_the_read_back_of_a_missing_file_is_empty(tmp_path):
     assert load_previous(tmp_path / "nope.yaml") == {}
+
+
+def test_a_required_env_param_is_marked():
+    """export VAR=${VAR} with no body is env.sh's only way to say you must set
+    this. Dropping it published three mandatory pvc-scenario params as optional."""
+    p = yaml.safe_load(emit_data_text(
+        "pvc-scenario", "krkn-hub", [ParamRecord(name="PVC_NAME", required=True)],
+        {"PVC_NAME": "The PVC."}, "r"))["params"][0]
+    assert p["required"] is True

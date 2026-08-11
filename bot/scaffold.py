@@ -9,8 +9,9 @@ GLOBAL_SCENARIO = "globals"
 
 
 def _is_table_separator(line):
+    # The pipe is required: "---" alone is a frontmatter fence.
     s = line.strip().strip("|").strip()
-    return bool(s) and "-" in s and all(c in "|-: " for c in s)
+    return "|" in line and bool(s) and "-" in s and all(c in "|-: " for c in s)
 
 
 def _call(scenario, source):
@@ -20,32 +21,34 @@ def _call(scenario, source):
 
 
 def inject_shortcode(text, scenario, source):
-    """Replace the first markdown parameter table with the param-table shortcode call.
+    """Replace the parameter table with the param-table shortcode call.
     Idempotent: returns text unchanged if a param-table call is already present."""
-    call = _call(scenario, source)
     if "param-table" in text:
         return text
     lines = text.splitlines(keepends=True)
-    sep = end = None
-    for i, line in enumerate(lines):
-        if sep is None and _is_table_separator(line) and i > 0 and "|" in lines[i - 1]:
-            sep = i
-        elif sep is not None and "|" not in line:
-            end = i
-            break
-    if sep is None:
-        return text
-    if end is None:
-        end = len(lines)
-    header = sep - 1
-    return "".join(lines[:header] + [call + "\n"] + lines[end:])
+    for header, end, _rows in _tables(lines):
+        # Not just the first table: a tab can open with prerequisites, and
+        # replacing that one deletes it and strands the real table.
+        if _is_param_table(lines[header]):
+            return "".join(lines[:header] + [_call(scenario, source) + "\n"] + lines[end:])
+    return text
 
 
 def _row_cells(line):
-    """Cells of a table row, formatting stripped. Handles both page styles:
-    "| `--flag` | ... |" on the krknctl page and "`NAME` | ... " with no outer
-    pipes on the krkn-hub page."""
-    return [c.strip().strip("`").strip() for c in line.strip().strip("|").split("|")]
+    r"""Cells of a table row, formatting stripped. Handles both page styles, and
+    keeps a \| inside its cell instead of starting a new one."""
+    body = line.strip().strip("|")
+    return [c.strip().strip("`").strip().replace(r"\|", "|")
+            for c in re.split(r"(?<!\\)\|", body)]
+
+
+_PARAM_HEADERS = ("parameter", "argument")
+
+
+def _is_param_table(header_line):
+    """All 52 published tables head their first column Parameter or Argument."""
+    cells = _row_cells(header_line)
+    return bool(cells) and cells[0].lower() in _PARAM_HEADERS
 
 
 def _first_cell(line):
@@ -195,23 +198,27 @@ def inject_global_shortcodes(text, source, name_to_group):
 
 
 def _find_scenario_dir(website_root, scenario):
-    """Directory of the page for this scenario. Website page dir names diverge
-    from source scenario names (node-cpu-hog -> hog-scenarios/cpu-hog-scenario),
-    so the declared <krkn-hub-scenario id> is the reliable link. Falls back to an
-    exact dir-name match for pages whose id is missing or disagrees with the
-    source (e.g. id="pvc-scenarios" for source pvc-scenario)."""
+    """Directory of the page for this scenario, by declared <krkn-hub-scenario
+    id> then by directory name. Page dir names diverge from scenario names
+    (node-cpu-hog -> hog-scenarios/cpu-hog-scenario), so the id is the link.
+
+    Sorted, because rglob order is filesystem order and the answer must not
+    depend on the runner. Raises on a duplicate id: picking either page plants
+    the shortcode on the wrong one and leaves the real one stale."""
     root = Path(website_root) / "content/en/docs/scenarios"
-    for index in root.rglob("_index.md"):
-        m = _ID_RE.search(index.read_text(encoding="utf-8"))
-        if m and m.group(1) == scenario:
-            return index.parent
-    for index in root.rglob("_index.md"):
-        if index.parent.name == scenario:
-            return index.parent
-    return None
+    indexes = sorted(root.rglob("_index.md"))
+    matches = [i.parent for i in indexes
+               if (m := _ID_RE.search(i.read_text(encoding="utf-8", errors="replace")))
+               and m.group(1) == scenario]
+    if len(matches) > 1:
+        raise ValueError(f"{scenario} is claimed by {len(matches)} pages: "
+                         + ", ".join(str(p) for p in matches))
+    if matches:
+        return matches[0]
+    return next((i.parent for i in indexes if i.parent.name == scenario), None)
 
 
-def _find_tab(website_root, scenario, source):
+def find_tab(website_root, scenario, source):
     scn_dir = _find_scenario_dir(website_root, scenario)
     if scn_dir is None:
         return None

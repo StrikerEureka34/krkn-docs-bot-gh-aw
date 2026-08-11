@@ -3,7 +3,9 @@ from pathlib import Path
 import pytest
 
 from bot.parser import (
+    ParamRecord,
     build_skip_list,
+    is_global,
     extract_env_params,
     extract_krknctl_params,
     require_sources,
@@ -36,16 +38,16 @@ def test_skip_list_covers_both_sources(tmp_path):
         env='export WAIT_DURATION="${WAIT_DURATION:-60}"\n',
         krknctl='[{"variable": "TELEMETRY_ENABLED", "name": "telemetry-enabled"}]')
     skip = build_skip_list(hub, krkn)
-    assert "WAIT_DURATION" in skip
+    assert skip["WAIT_DURATION"] == "60"
     assert "TELEMETRY_ENABLED" in skip
-    # Set by run.sh, so neither source declares them.
-    assert {"SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"} <= skip
+    # Set by run.sh, so neither source declares them. is_global knows them.
+    for name in ("SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"):
+        assert is_global(ParamRecord(name=name), skip)
 
 
 def test_skip_list_tolerates_a_missing_source(tmp_path):
     hub, krkn = _sources(tmp_path, env='export WAIT_DURATION="${WAIT_DURATION:-60}"\n')
-    assert build_skip_list(hub, krkn) == {
-        "WAIT_DURATION", "SCENARIO_TYPE", "SCENARIO_FILE", "IMAGE"}
+    assert build_skip_list(hub, krkn) == {"WAIT_DURATION": "60"}
 
 
 def test_require_sources_names_the_file_and_how_to_point_at_it(tmp_path):
@@ -472,3 +474,17 @@ def test_an_unbalanced_brace_is_a_literal_not_a_reference(tmp_path):
     recs = _records(tmp_path, 'export X=${X:="${FOO"}\nexport Y=${Y:="$FOO}"}\n')
     assert recs["X"].default == "${FOO"
     assert recs["Y"].default == "$FOO}"
+
+
+def test_a_scenario_that_overrides_a_global_default_keeps_the_param():
+    """WAIT_DURATION is 60 globally and 300 in network-chaos. Name-only matching
+    dropped it from all four scenarios that override it."""
+    skip = {"WAIT_DURATION": "60"}
+    assert is_global(ParamRecord(name="WAIT_DURATION", default="60"), skip)
+    assert not is_global(ParamRecord(name="WAIT_DURATION", default="300"), skip)
+
+
+def test_infra_params_are_global_whatever_their_default():
+    """IMAGE is set by the run.sh wrapper, so a scenario-local value is still
+    not something a reader configures."""
+    assert is_global(ParamRecord(name="IMAGE", default="quay.io/other"), {})
