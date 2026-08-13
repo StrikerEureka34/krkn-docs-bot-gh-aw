@@ -10,7 +10,7 @@ from pathlib import Path
 
 from bot.crd_parser import crd_columns, crd_fields, crd_meta, load_crd
 from bot.descriptions import resolve_descriptions
-from bot.emitter import emit_data_file, load_previous
+from bot.emitter import emit_data_file
 from bot.report import write_report
 
 CRD_GLOB = "config/crd/bases/*.yaml"
@@ -36,14 +36,12 @@ def _records(doc):
 
 
 def _emit_one(website_root, scenario, source, records, source_ref):
-    out = website_root / "data" / "params" / scenario / f"{source}.yaml"
-    prev = load_previous(out)
-    # A borrow is re-derived every run so a column keeps following its field.
-    existing = {n: p.get("description", "") for n, p in prev.items()
-                if p.get("description_source") != BORROW}
-    descs, gaps = resolve_descriptions(scenario, records, existing, _no_model,
+    # No existing-file rung. The CRD is regenerated from the Go types every
+    # build, so it is the only authority: keeping a description upstream just
+    # deleted would publish text the code no longer has.
+    descs, gaps = resolve_descriptions(scenario, records, {}, _no_model,
                                        borrow_source=BORROW)
-    emit_data_file(website_root, scenario, source, records, descs, source_ref)
+    out = emit_data_file(website_root, scenario, source, records, descs, source_ref)
     return out, [(scenario, source) + g for g in gaps]
 
 
@@ -64,15 +62,16 @@ def emit(website_root, operator_root, source_ref="HEAD"):
 
 
 def _page(meta, sources):
-    scope = "Namespaced" if meta["scope"] == "Namespaced" else "Cluster-scoped"
-    head = f'`{meta["group"]}/{meta["version"]}` &ensp; {scope}'
+    head = f'`{meta["group"]}/{meta["version"]}` &ensp; {meta["scope"]}'
     if meta["short"]:
         head += f' &ensp; short name `{meta["short"]}`'
+    # No weight: Hugo falls back to title order, which is the order wanted here.
+    # A weight would have to be recomputed as kinds arrive, and these pages are
+    # written once so an old one could never be renumbered.
     body = [
         "---",
         f'title: {meta["kind"]}',
         f'description: Fields of the {meta["kind"]} custom resource',
-        f'weight: {meta["weight"]}',
         "---",
         "",
         head,
@@ -81,9 +80,8 @@ def _page(meta, sources):
         " comments there, not this page.",
         "",
     ]
-    # The kind's own doc comment is deliberately not rendered. It is written for
-    # Go readers and carries label syntax like <user|admin> that Hugo eats as raw
-    # HTML, so prose here is a human's to add and the bot never overwrites it.
+    # The kind's own doc comment is not rendered: it is written for Go readers
+    # and prose here belongs to whoever adds it.
     for source in sources:
         body += [f'## {_HEADINGS[source]}', "",
                  f'{{{{< param-table scenario="{meta["plural"]}" '
@@ -103,6 +101,9 @@ CRDs in krkn-operator, so a field here always matches the cluster.
 To fix a description, edit the Go doc comment in `api/v1alpha1` upstream. The
 next sync carries it here.
 
+<!-- This index is regenerated on every sync. Add prose to a kind's own page,
+     which the bot writes once and never touches again. -->
+
 """
 
 
@@ -115,8 +116,11 @@ def _index(metas):
 
 
 def scaffold(website_root, operator_root):
-    """Write a page per kind plus the section index, each only when it does not
-    exist. The bot never revisits a page, so prose added later survives."""
+    """Write a page per kind plus the section index.
+
+    A kind's page is written only when absent, because it carries prose a human
+    may add. The index is rewritten every run: it is a generated table with no
+    prose slot, and left alone it would never list a kind added later."""
     website_root = Path(website_root)
     root = website_root / SECTION
     metas, written = [], []
@@ -125,27 +129,25 @@ def scaffold(website_root, operator_root):
         meta = crd_meta(doc)
         records = _records(doc)
         meta["fields"] = len(records["spec"]) + len(records["status"])
+        meta["sources"] = [s for s in SOURCES if records[s]]
         metas.append(meta)
-    # Alphabetical, so a new kind does not renumber the pages around it.
     metas.sort(key=lambda m: m["kind"])
-    for i, meta in enumerate(metas, start=1):
-        meta["weight"] = i
-        sources = [s for s in SOURCES
-                   if (website_root / "data" / "params" / meta["plural"]
-                       / f"{s}.yaml").exists()]
-        if not sources:
+    for meta in metas:
+        if not meta["sources"]:
             continue
         page = root / f'{meta["plural"]}.md'
         if page.exists():
             continue
         page.parent.mkdir(parents=True, exist_ok=True)
-        page.write_text(_page(meta, sources), encoding="utf-8")
+        page.write_text(_page(meta, meta["sources"]), encoding="utf-8")
         written.append(page)
-    index = root / "_index.md"
-    if metas and not index.exists():
+    if metas:
+        index = root / "_index.md"
         index.parent.mkdir(parents=True, exist_ok=True)
-        index.write_text(_index(metas), encoding="utf-8")
-        written.append(index)
+        text = _index(metas)
+        if not index.exists() or index.read_text(encoding="utf-8") != text:
+            index.write_text(text, encoding="utf-8")
+            written.append(index)
     return written
 
 

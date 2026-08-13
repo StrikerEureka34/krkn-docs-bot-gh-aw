@@ -135,11 +135,59 @@ def test_the_page_heading_names_the_api_and_short_name(repo):
 
 
 def test_the_go_doc_comment_is_not_rendered_into_the_page(repo):
-    """It carries label syntax like <user|admin> that Hugo eats as raw HTML."""
+    """Assert the text itself is absent, not just one hazardous substring: a
+    spot-check would still pass for the eight kinds that lack it."""
     run(repo)
     page = (repo / "website" / operator.SECTION / "krknusers.md").read_text(
         encoding="utf-8")
+    assert "It represents an authentication entity" not in page
     assert "<user|admin>" not in page
+
+
+def test_a_kind_added_later_reaches_the_index(repo):
+    """The likeliest real event for this source. The index is a generated table
+    with no prose slot, so unlike a kind's page it is rewritten every run."""
+    late = repo / "operator" / "config" / "crd" / "bases" / \
+        "krkn.krkn-chaos.dev_krknusers.yaml"
+    held = late.read_text(encoding="utf-8")
+    late.unlink()
+    run(repo)
+    index = repo / "website" / operator.SECTION / "_index.md"
+    assert "KrknUser]" not in index.read_text(encoding="utf-8")
+
+    late.write_text(held, encoding="utf-8")
+    run(repo)
+    text = index.read_text(encoding="utf-8")
+    assert "[KrknUser](krknusers/)" in text
+    assert (repo / "website" / operator.SECTION / "krknusers.md").exists()
+
+
+def test_no_two_pages_claim_the_same_sidebar_position(repo):
+    """Pages are written once, so a weight assigned by alphabetical position
+    would collide the moment a kind was inserted above an existing one."""
+    run(repo)
+    pages = list((repo / "website" / operator.SECTION).glob("*.md"))
+    weights = [line for p in pages if p.name != "_index.md"
+               for line in p.read_text(encoding="utf-8").splitlines()
+               if line.startswith("weight:")]
+    assert weights == []
+
+
+def test_an_upstream_description_removal_is_reported_not_papered_over(repo):
+    """The CRD is regenerated from the Go types, so it is the only authority.
+    Keeping the previous run's text would publish what the code no longer says."""
+    run(repo)
+    crd = repo / "operator" / "config" / "crd" / "bases" / \
+        "krkn.krkn-chaos.dev_krknusers.yaml"
+    crd.write_text(crd.read_text(encoding="utf-8").replace(
+        "description: Surname is the last name of the user\n", ""), encoding="utf-8")
+    written, gaps, _ = run(repo)
+    spec = yaml.safe_load(
+        (repo / "website" / "data" / "params" / "krknusers" / "spec.yaml")
+        .read_text(encoding="utf-8"))
+    surname = next(p for p in spec["params"] if p["name"] == "surname")
+    assert surname["description"] == ""
+    assert any(g[2] == "surname" and g[3] == "" for g in gaps)
 
 
 def test_an_operator_path_with_no_crds_is_an_error(tmp_path, monkeypatch):

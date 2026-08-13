@@ -11,12 +11,21 @@ from bot.parser import ParamRecord
 # ponytail: name heuristic. The upstream ask adds a real marker to the Go types;
 # swap to that when it lands.
 _SECRETISH = ("secret", "password", "token", "credential")
+# A field that names or classifies a secret is not one: passwordSecretRef holds a
+# Secret's name, secretType holds an enum. Marking them would contradict the row.
+_NOT_SECRET = ("ref", "type", "name", "uuid", "path", "id")
 
 
 def _text(node):
-    """controller-gen hard-wraps at 80 columns, so the raw value is multi-line
-    and would break out of its table cell."""
-    return " ".join((node.get("description") or "").split()) or None
+    """A description, flattened and made safe to render.
+
+    controller-gen hard-wraps at 80 columns, so the raw value is multi-line and
+    breaks out of its table cell. The angle brackets matter more: a Go doc
+    comment is plain text, so <path> and <uuid> are placeholders, but the
+    shortcode runs descriptions through markdownify and a browser then drops
+    them as unknown tags."""
+    text = " ".join((node.get("description") or "").split())
+    return text.replace("<", "&lt;").replace(">", "&gt;") or None
 
 
 def _default(node):
@@ -36,6 +45,13 @@ def _allowed(node):
     return list(enum) if enum else None
 
 
+def _is_secret(path):
+    leaf = path.rsplit(".", 1)[-1].lower()
+    if leaf.endswith(_NOT_SECRET):
+        return False
+    return any(s in leaf for s in _SECRETISH)
+
+
 def _record(path, node, required):
     description = _text(node)
     return ParamRecord(
@@ -48,7 +64,7 @@ def _record(path, node, required):
         default=_default(node),
         required=required,
         allowed_values=_allowed(node),
-        secret=any(s in path.lower() for s in _SECRETISH),
+        secret=_is_secret(path),
     )
 
 
@@ -76,8 +92,16 @@ def _descend(node, path, out):
         _descend(items, f"{path}[]", out)
 
 
+def _version(doc):
+    """The storage version, which is the one the cluster round-trips. versions
+    are emitted name-sorted, so versions[0] would document v1alpha1 forever once
+    a v1beta1 lands."""
+    versions = doc["spec"]["versions"]
+    return next((v for v in versions if v.get("storage")), versions[0])
+
+
 def _schema(doc):
-    return doc["spec"]["versions"][0]["schema"]["openAPIV3Schema"]
+    return _version(doc)["schema"]["openAPIV3Schema"]
 
 
 def crd_fields(doc, section) -> list[ParamRecord]:
@@ -93,24 +117,29 @@ def crd_fields(doc, section) -> list[ParamRecord]:
 def crd_columns(doc, by_section) -> list[ParamRecord]:
     """Records for the `kubectl get` columns.
 
-    A column has no description of its own, so it borrows from the field its
+    A column usually has no description, so it borrows from the field its
     jsonPath names. by_section is {"spec": {name: record}, "status": {...}}."""
     out = []
-    for column in doc["spec"]["versions"][0].get("additionalPrinterColumns") or ():
+    for column in _version(doc).get("additionalPrinterColumns") or ():
         path = column.get("jsonPath", "")
         # .metadata.creationTimestamp is the Age column every kind carries.
         if path.startswith(".metadata."):
             continue
-        section, _, field = path.lstrip(".").partition(".")
-        match = (by_section.get(section) or {}).get(field)
+        description = _text(column)
         record = ParamRecord(
             name=column["name"],
+            description=description,
+            description_source="crd" if description else None,
             type=column.get("type"),
             # Requiredness is meaningless for a display column, and None keeps
             # the emitter from adding a column of "No".
             required=None,
         )
-        if match and match.description:
+        section, _, field = path.lstrip(".").partition(".")
+        match = (by_section.get(section) or {}).get(field)
+        # printcolumn description= is written for the column, so it outranks the
+        # field's wording when upstream supplies one.
+        if not description and match and match.description:
             record.borrowed_description = match.description
         out.append(record)
     return out
@@ -118,16 +147,15 @@ def crd_columns(doc, by_section) -> list[ParamRecord]:
 
 def crd_meta(doc) -> dict:
     """What the reference page needs in its heading."""
-    spec, names = doc["spec"], doc["spec"]["names"]
+    names = doc["spec"]["names"]
     short = names.get("shortNames") or []
     return {
         "kind": names["kind"],
         "plural": names["plural"],
         "short": short[0] if short else None,
-        "group": spec["group"],
-        "version": spec["versions"][0]["name"],
-        "scope": spec["scope"],
-        "description": _text(_schema(doc)),
+        "group": doc["spec"]["group"],
+        "version": _version(doc)["name"],
+        "scope": doc["spec"]["scope"],
     }
 
 

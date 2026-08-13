@@ -56,8 +56,9 @@ def test_a_column_borrows_from_the_field_its_jsonpath_names():
         "Active indicates whether the user account is active"
 
 
-def test_a_column_pointing_nowhere_is_left_blank_not_guessed(monkeypatch):
-    """A jsonPath the walk cannot reach must surface as a gap, not a wrong cell."""
+def test_a_column_pointing_nowhere_borrows_nothing():
+    """A jsonPath the walk cannot reach leaves the record blank. That it then
+    becomes a reported gap is test_operator's job, not this one's."""
     doc = crd("krknusers")
     doc["spec"]["versions"][0]["additionalPrinterColumns"] = [
         {"jsonPath": ".spec.doesNotExist", "name": "Ghost", "type": "string"}]
@@ -127,10 +128,50 @@ def test_a_map_of_arrays_of_objects_is_reached():
     assert "targetData.<key>[].cluster-api-url" in status
 
 
-def test_a_secret_bearing_name_is_marked():
-    spec = by_name(crd_fields(crd("krknusers"), "spec"))
-    assert spec["passwordSecretRef"].secret is True
-    assert spec["name"].secret is False
+def test_a_field_that_only_names_a_secret_is_not_marked_as_one():
+    """passwordSecretRef holds a Secret's name and secretType holds an enum.
+    Marking either would contradict the row's own description and values."""
+    users = by_name(crd_fields(crd("krknusers"), "spec"))
+    targets = by_name(crd_fields(crd("krknoperatortargets"), "spec"))
+    assert users["passwordSecretRef"].secret is False
+    assert users["name"].secret is False
+    assert targets["secretType"].secret is False
+    assert targets["secretUUID"].secret is False
+
+
+def test_a_field_that_holds_a_secret_is_marked():
+    spec = by_name(crd_fields(crd("krknscenarioruns"), "spec"))
+    assert spec["password"].secret is True
+    assert spec["token"].secret is True
+
+
+def test_angle_brackets_are_escaped_so_they_survive_markdownify():
+    """A Go doc comment is plain text, so <uuid> is a placeholder. Left raw, the
+    shortcode's markdownify hands it to the browser as a tag and it disappears."""
+    spec = by_name(crd_fields(crd("krkntargetrequests"), "spec"))
+    assert "uuid=&lt;uuid&gt;" in spec["uuid"].description
+    assert "<uuid>" not in spec["uuid"].description
+
+
+def test_the_storage_version_is_the_one_documented():
+    """versions are emitted name-sorted, so a later v1beta1 would leave
+    versions[0] documenting v1alpha1 forever."""
+    doc = crd("krknusers")
+    versions = doc["spec"]["versions"]
+    older = {**versions[0], "name": "v1alpha0", "storage": False}
+    doc["spec"]["versions"] = [older, {**versions[0], "storage": True}]
+    assert crd_meta(doc)["version"] == "v1alpha1"
+
+
+def test_a_column_with_its_own_description_does_not_borrow():
+    """printcolumn description= is written for the column, so it wins."""
+    doc = crd("krknusers")
+    doc["spec"]["versions"][0]["additionalPrinterColumns"] = [
+        {"jsonPath": ".spec.role", "name": "Role", "type": "string",
+         "description": "The permission level granted to this user"}]
+    role = crd_columns(doc, sections(doc))[0]
+    assert role.description == "The permission level granted to this user"
+    assert role.borrowed_description is None
 
 
 def test_kubernetes_boilerplate_is_not_a_parameter():
@@ -151,7 +192,8 @@ def test_meta_carries_what_the_page_heading_needs():
     assert m["group"] == "krkn.krkn-chaos.dev"
     assert m["version"] == "v1alpha1"
     assert m["scope"] == "Namespaced"
-    assert m["description"].startswith("KrknUser is the Schema")
+    # The kind's own doc comment is deliberately not carried: nothing renders it.
+    assert "description" not in m
 
 
 @pytest.mark.parametrize("kind,plural", [
