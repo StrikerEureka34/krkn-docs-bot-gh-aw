@@ -80,9 +80,8 @@ def _tables(lines):
 
 def published_table(text):
     """{parameter: (lowercased headers, cells)} for every table on the page.
-
-    Every table, not just the first: the global pages carry one per group.
-    Headers travel with each row because two tables on a page need not match."""
+    Every table, not just the first: the global pages carry one per group. Headers
+    travel per row because two tables on a page need not match."""
     lines = text.splitlines()
     out = {}
     for header, _end, row_indexes in _tables(lines):
@@ -115,9 +114,8 @@ def _slug(heading):
 
 def page_section_groups(text):
     """{parameter: section slug} for every hand-written table on a global page.
-
-    env.sh carries no grouping, so the krkn-hub page's own sections are the
-    grouping for it. krknctl groups describe the other page's layout."""
+    env.sh carries no grouping, so the krkn-hub page's own sections supply it.
+    krknctl groups describe the other page's layout."""
     lines = text.splitlines()
     heads = {i: _slug(ln[3:]) for i, ln in enumerate(lines) if ln.startswith("## ")}
     out = {}
@@ -135,12 +133,10 @@ def page_section_groups(text):
 
 def inject_global_shortcodes(text, source, name_to_group):
     """Replace each parameter table on a global page with a group-filtered
-    param-table call, deriving the group from the table's own rows.
-    Returns (new_text, report). A table is replaced only when every row resolves
-    to the same known group and exactly one table on the page claims that group.
-    Two sections can draw from one group: Kraken and Tunings both take from
-    "general". Injecting either would pull the other's params in while that
-    section still lists them, so a split group is left alone on every table."""
+    param-table call, returning (new_text, report). Replaced only when every row
+    resolves to one known group and exactly one table claims it: Kraken and
+    Tunings both draw from "general", so injecting either would duplicate the
+    other's rows while that section still lists them."""
     lines = text.splitlines(keepends=True)
     report, edits = [], []
 
@@ -198,13 +194,11 @@ def inject_global_shortcodes(text, source, name_to_group):
 
 
 def _find_scenario_dir(website_root, scenario):
-    """Directory of the page for this scenario, by declared <krkn-hub-scenario
-    id> then by directory name. Page dir names diverge from scenario names
-    (node-cpu-hog -> hog-scenarios/cpu-hog-scenario), so the id is the link.
-
-    Sorted, because rglob order is filesystem order and the answer must not
-    depend on the runner. Raises on a duplicate id: picking either page plants
-    the shortcode on the wrong one and leaves the real one stale."""
+    """Directory of the page for this scenario, by declared <krkn-hub-scenario id>
+    then by directory name: page dirs diverge from scenario names, so the id is
+    the link. Sorted, so the answer does not depend on the runner's filesystem
+    order. Raises on a duplicate id, since picking either page plants the
+    shortcode on the wrong one and leaves the real one stale."""
     root = Path(website_root) / "content/en/docs/scenarios"
     indexes = sorted(root.rglob("_index.md"))
     matches = [i.parent for i in indexes
@@ -267,10 +261,9 @@ def _create_scenario_page(website_root, scenario, sources):
 
 
 def scaffold_scenario(scenario, website_root):
-    """Inject the param-table shortcode into the tab files for the sources that
-    actually have generated data (data/params/<scenario>/<source>.yaml). If the
-    scenario has no website page yet, create one (index plus stub tabs) for just
-    those sources, so a source with no data never gets an empty tab."""
+    """Inject the param-table shortcode into the tab files for sources that have
+    generated data. Creates the page if the scenario has none, for those sources
+    only, so a source with no data never gets an empty tab."""
     root = Path(website_root)
     sources = [s for s in ("krkn-hub", "krknctl")
                if (root / "data" / "params" / scenario / f"{s}.yaml").exists()]

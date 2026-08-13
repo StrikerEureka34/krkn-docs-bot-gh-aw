@@ -84,10 +84,8 @@ def context(scn, names, records):
 
 def describe_fn(scn, records, reasons, memo=None):
     """llm_fn for resolve_descriptions. Rejections go into `reasons` so the report
-    can say why a cell is blank rather than only that it is.
-
-    memo is shared across a scenario's two sources: a param on both tabs must get
-    one description, not two calls returning two different sentences."""
+    says why a cell is blank, not only that it is. memo is shared across a
+    scenario's two sources, so a param on both tabs gets one description."""
     memo = {} if memo is None else memo
     by_name = {r.name: r for r in records}
 
@@ -150,10 +148,9 @@ def _fail(errors, msg):
 
 def describe(scenario, names, ctx, transport=None, errors=None):
     """{name: sentence} for the names that produced text.
-
-    Returns {} on any failure: non-200, malformed JSON, timeout, unreachable
-    endpoint, missing credentials. A blank cell is already legal and already
-    reported, so a failed call never fails the run."""
+    Returns {} on any failure (non-200, bad JSON, timeout, no credentials): a
+    blank cell is already legal and reported, so a failed call never fails the
+    run."""
     if not names:
         return {}
     base = os.environ.get("OPENAI_BASE_URL", "https://openrouter.ai/api/v1")

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Report-only parameter drift scanner for the krkn-hub and krknctl sources.
 
-For each documented scenario it compares the source files (env.sh,
-krknctl-input.json) against the committed data/params table and reports a
-missing table, or missing / stale / extra params, one finding per source so it
-can link the exact file. It writes nothing to the docs: the report is a rolling
-docs-drift issue, and fixing is done by commenting /fix <scenario> on it.
+Compares each documented scenario's source files against the committed
+data/params table and reports a missing table, or missing / stale / extra params,
+one finding per source so it can link the exact file. It writes nothing: the
+report is a rolling issue, fixed by commenting /fix <scenario> on it.
 """
 import argparse
 import re
@@ -111,10 +110,9 @@ def scenario_findings(scenario, krkn_hub_root, website_root, hub_url=_DEFAULT_HU
 def global_findings(krkn_hub_root, krkn_root, website_root,
                     hub_url=_DEFAULT_HUB_URL, krkn_url=_KRKN_URL):
     """Drift in the two global parameter pages, reported under the scenario id
-    "globals" so a single `/fix globals` covers every group.
-    Sources are krkn-hub/env.sh and krkn/containers/krknctl-input.json. Each
-    source has one table, data/params/globals/<source>.yaml, holding every group,
-    so it is read once and sliced by each row's group."""
+    "globals" so one `/fix globals` covers every group. Each source has a single
+    table holding every group, so it is read once and sliced by each row's
+    group."""
     from bot.globals import GLOBAL_SCENARIO, OTHER_GROUP, build_groups
 
     ctl, env = build_groups(krkn_hub_root, krkn_root)
@@ -191,12 +189,10 @@ def _finding_detail(f: Finding) -> str:
 
 
 def _scenario_summary(fs) -> str:
-    """The single checkbox label for a scenario. /fix acts per scenario and
-    regenerates every source at once, so there is one checkbox per scenario.
-
-    Ends with a confidence marker. Everything except "extra" is derived from the
-    source and loses nothing, so it is safe to regenerate. "extra" is the only
-    kind where /fix deletes a documented row, so it needs a human."""
+    """The single checkbox label for a scenario, since /fix regenerates every
+    source at once. Ends with a confidence marker: everything but "extra" is
+    derived from the source and safe to regenerate, while "extra" is the one kind
+    where /fix deletes a documented row, so it needs a human."""
     extras = [f for f in fs if f.kind == "extra"]
     if {f.kind for f in fs} == {"missing-table"}:
         n = sum(len(f.new.split(", ")) for f in fs if f.new)

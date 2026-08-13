@@ -148,11 +148,9 @@ _REF_RE = re.compile(r'^\$(?:([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)
 
 def _resolve_references(records: dict) -> None:
     """Replace a default that is only a pointer at another variable.
-
-    "$ALERTS_PATH" in a docs table tells a reader nothing, so look up the
-    sibling it names. No sibling means no default. Follows chains, since a
-    single pass would resolve them in declaration order.
-    """
+    "$ALERTS_PATH" tells a reader nothing, so look up the sibling it names. No
+    sibling means no default. Follows chains, since one pass would resolve them
+    in declaration order."""
     def resolve(name, seen):
         rec = records.get(name)
         if rec is None or rec.default is None:
@@ -177,13 +175,10 @@ def _as_bool(value: object) -> bool:
 
 
 def extract_krknctl_params(path: Path) -> list[ParamRecord]:
-    """Extract ParamRecords from a krknctl-input.json file
-    (description, type, required, allowed_values, group, flag).
-
-    Each entry carries two identifiers: "variable" is the env var, which is what
-    joins against env.sh, and "name" is the CLI flag the krknctl page shows a
-    reader. Both travel on the record, so a caller that needs to display flags
-    swaps them rather than re-parsing the file with a different key."""
+    """Extract ParamRecords from a krknctl-input.json file.
+    Each entry has two identifiers: "variable" is the env var that joins against
+    env.sh, "name" is the CLI flag the page shows. Both travel on the record, so
+    a caller can swap them rather than re-parse with a different key."""
     data = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(data, list):
         return []
@@ -191,9 +186,8 @@ def extract_krknctl_params(path: Path) -> list[ParamRecord]:
     for item in data:
         if not isinstance(item, dict) or "variable" not in item:
             continue
-        # "type": "Group" entries name and describe a group but configure
-        # nothing. They carry no "variable" today, so the check above already
-        # skips them; this keeps them out if one ever gains one.
+        # "type": "Group" entries describe a group but configure nothing. They
+        # carry no "variable" today; this holds if one ever gains one.
         if item.get("type") == "Group":
             continue
         raw_default = item.get("default")  # JSON null == no default

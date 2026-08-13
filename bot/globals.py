@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """Generate the two global parameter pages from their sources.
 
-krknctl globals come from krkn/containers/krknctl-input.json, which carries a
-"group" and is displayed by CLI flag name. krkn-hub globals come from
-krkn-hub/env.sh, which has no grouping: it borrows one by joining each export
-name against the krknctl "variable" field, and exports that do not join land in
-"other". Section headings and their order live in the website page, not here.
+krknctl globals come from krknctl-input.json, carry a "group", and display by
+CLI flag. krkn-hub globals come from env.sh, which has no grouping: it joins each
+export against the krknctl "variable" field and unmatched ones land in "other".
+Section headings and their order live in the website page, not here.
 """
 import argparse
 from collections import Counter, defaultdict
@@ -53,14 +52,13 @@ def _group_bridge(page_groups, by_var):
 
 def build_groups(krkn_hub_root, krkn_root, website_root=None):
     """(krknctl_records, env_records), both with .group populated.
-    The krknctl page renders CLI flags, so those records swap in the flag as the
-    name. env records keep the variable name and borrow the group, and a
-    description, from the matching krknctl entry when they have none."""
+    The krknctl page renders CLI flags, so those records swap the flag into name.
+    env records keep the variable name and borrow group, and a description, from
+    the matching krknctl entry when they have none."""
     records = extract_krknctl_params(Path(krkn_root) / _KRKNCTL_REL)
     by_var = {r.name: r for r in records}
-    # An entry with no flag falls back to its variable name rather than
-    # vanishing, and one with no group joins "other". A row emitted without a
-    # group matches no group-filtered call, so it would drop off the page.
+    # No flag falls back to the variable name, no group joins "other". A row
+    # without a group matches no filtered call, so it would drop off the page.
     ctl = [replace(r, name=r.flag or r.name, group=r.group or OTHER_GROUP)
            for r in records]
 
@@ -145,11 +143,10 @@ _PAGES = (
 
 
 def scaffold(website_root, krkn_hub_root, krkn_root):
-    """Replace the hand-written tables on the two global pages with group-filtered
-    param-table calls. Returns a report line per table.
-    The group comes from each table's own rows, so no marker or heading map is
-    needed. A table whose rows span groups, or whose group is claimed by another
-    table on the same page, is left alone rather than guessed at."""
+    """Replace the tables on the two global pages with group-filtered param-table
+    calls, one report line per table. The group comes from each table's own rows,
+    so no marker or heading map is needed. A table spanning groups, or whose group
+    another table on the page claims, is left alone rather than guessed at."""
     from bot.scaffold import inject_global_shortcodes
 
     # Same website_root as emit(): the data file's groups and the injected

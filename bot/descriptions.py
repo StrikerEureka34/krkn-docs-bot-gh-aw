@@ -2,16 +2,11 @@ _NO_SOURCE = "no description in any source and no published row"
 
 
 def resolve_descriptions(scenario, records, existing, llm_fn, published=None):
-    """Return (descriptions_by_name, gaps).
-
+    """Return (descriptions_by_name, gaps), gaps being (name, filled_from, text)
+    for each description not taken from a source file.
     Priority: source -> published table -> existing file -> other source -> LLM.
-    The published table ranks second because a human wrote it, and it wins only
-    once: the run that reads it also removes it.
-
-    gaps is (name, filled_from, text) for every description not taken from a
-    source file. The existing-file rung is not a gap, it was reported when it
-    was first written.
-    """
+    The published table is human-written, so it ranks second and wins only once:
+    the run that reads it also removes it."""
     published = published or {}
     out, gaps, residual = {}, [], []
     for r in records:
