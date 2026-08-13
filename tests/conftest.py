@@ -11,7 +11,6 @@ os.environ.setdefault("GITHUB_TOKEN", "test-token-for-tests")
 
 @pytest.fixture(autouse=True)
 def _no_live_model_calls(monkeypatch):
-    """describe() falls back to the real endpoint when a key is present, so a
-    developer with OPENAI_API_KEY set would otherwise have the suite call out."""
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    """The base URL and model are built in, so a developer with LLM_API_KEY
+    exported would otherwise have the suite call the real endpoint."""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)

@@ -57,8 +57,7 @@ def test_no_names_makes_no_call():
     assert describe("s", [], CTX, transport=boom(AssertionError("called"))) == {}
 
 
-def test_no_credentials_makes_no_call(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+def test_no_credentials_makes_no_call():
     assert describe("s", ["X"], CTX) == {}
 
 
@@ -147,11 +146,47 @@ def test_an_unreadable_error_body_still_names_the_status():
     assert errors == ["endpoint returned HTTP 401: no body"]
 
 
-def test_a_missing_key_is_named(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+def test_a_missing_key_is_named():
+    """The key is the only setting CI supplies, so it is the only one to report."""
     errors = []
     assert describe("s", ["X"], CTX, errors=errors) == {}
-    assert errors == ["no OPENAI_API_KEY set"]
+    assert errors == ["no LLM_API_KEY set"]
+
+
+def test_the_key_alone_produces_the_full_request(monkeypatch):
+    """The URL is built by concatenation, so a stray slash or a doubled /v1
+    would 404 at runtime with nothing in the suite to catch it."""
+    seen = {}
+
+    def fake_post(url, key, body):
+        seen.update(url=url, key=key, model=body["model"])
+        return {"choices": [{"message": {"content": '{"X": "Plain."}'}}]}
+
+    monkeypatch.setattr("bot.describe._post", fake_post)
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    assert describe("s", ["X"], CTX) == {"X": "Plain."}
+    assert seen == {
+        "url": "https://model.cclm-chaos.aws.rhperfscale.org/v1/chat/completions",
+        "key": "k",
+        "model": "qwen3.5:4b",
+    }
+
+
+def test_the_endpoint_can_be_overridden_for_a_fork(monkeypatch):
+    """Fork testing runs against Copilot, so all three take an override."""
+    seen = {}
+
+    def fake_post(url, key, body):
+        seen.update(url=url, model=body["model"])
+        return {"choices": [{"message": {"content": '{"X": "Plain."}'}}]}
+
+    monkeypatch.setattr("bot.describe._post", fake_post)
+    monkeypatch.setenv("LLM_API_KEY", "k")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.githubcopilot.com")
+    monkeypatch.setenv("LLM_MODEL", "gpt-4o")
+    describe("s", ["X"], CTX)
+    assert seen == {"url": "https://api.githubcopilot.com/chat/completions",
+                    "model": "gpt-4o"}
 
 
 def test_a_rejected_description_is_not_memoised(tmp_path, monkeypatch):
