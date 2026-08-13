@@ -26,12 +26,44 @@ def run(repo, scaffold=True):
     return written, gaps, pages
 
 
+def sections(written):
+    """The per-section files only. `written` also carries the kind index, which
+    holds no params."""
+    return [f for f in written if Path(f).parent.parent.name == "params"]
+
+
 def test_a_full_run_writes_a_file_per_section_per_kind(repo):
     written, _, _ = run(repo)
-    assert len(written) == 25
+    # 25 section files plus the one kind index.
+    assert len(written) == 26
     data = repo / "website" / "data" / "params"
     assert (data / "krknusers" / "spec.yaml").exists()
     assert (data / "krknusers" / "columns.yaml").exists()
+
+
+def test_the_kind_index_carries_what_a_link_needs(repo):
+    """crd-ref reads the kind and short name from here rather than having them
+    typed into prose, so the link text cannot drift from the CRD."""
+    run(repo)
+    index = yaml.safe_load(
+        (repo / "website" / operator.INDEX_DATA).read_text(encoding="utf-8"))
+    assert index["krknusers"] == {"kind": "KrknUser", "short": "ku", "fields": 9}
+    assert set(index) == {
+        "krknfiletypes", "krkngraphruns", "krknoperatortargetproviderconfigs",
+        "krknoperatortargetproviders", "krknoperatortargets", "krknscenarioruns",
+        "krkntargetrequests", "krknusergroups", "krknusers"}
+
+
+def test_a_removed_kind_leaves_the_index(repo):
+    """The index is rewritten whole, so a kind deleted upstream stops resolving
+    and crd-ref fails the build rather than linking at a page that is gone."""
+    run(repo)
+    (repo / "operator" / "config" / "crd" / "bases" /
+     "krkn.krkn-chaos.dev_krknusers.yaml").unlink()
+    run(repo)
+    index = yaml.safe_load(
+        (repo / "website" / operator.INDEX_DATA).read_text(encoding="utf-8"))
+    assert "krknusers" not in index
 
 
 def test_a_kind_with_no_status_gets_no_status_file(repo):
@@ -51,7 +83,7 @@ def test_every_row_is_described_without_the_model(repo):
         written, gaps, _ = run(repo)
     finally:
         operator._no_model = original
-    rows = [p for f in written
+    rows = [p for f in sections(written)
             for p in yaml.safe_load(Path(f).read_text(encoding="utf-8"))["params"]]
     assert len(rows) == 167
     assert [r["name"] for r in rows if not r["description"]] == []
@@ -61,7 +93,7 @@ def test_every_row_is_described_without_the_model(repo):
 
 def test_only_the_borrowed_column_rows_carry_provenance(repo):
     written, _, _ = run(repo)
-    marked = [(Path(f).name, p["name"]) for f in written
+    marked = [(Path(f).name, p["name"]) for f in sections(written)
               for p in yaml.safe_load(Path(f).read_text(encoding="utf-8"))["params"]
               if p.get("description_source")]
     # A field describes itself, so only a column can be a borrow.

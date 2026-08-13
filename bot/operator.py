@@ -8,14 +8,19 @@ blank cell."""
 import argparse
 from pathlib import Path
 
+import yaml
+
 from bot.crd_parser import crd_columns, crd_fields, crd_meta, load_crd
 from bot.descriptions import resolve_descriptions
-from bot.emitter import emit_data_file
+from bot.emitter import HEADER, emit_data_file
 from bot.report import write_report
 
 CRD_GLOB = "config/crd/bases/*.yaml"
 SECTION = "content/en/docs/krkn-operator/api-reference"
 SOURCES = ("spec", "status", "columns")
+# plural -> kind, short name, field count. The crd-ref shortcode resolves against
+# this, so a renamed CRD fails the site build instead of leaving a 404 in prose.
+INDEX_DATA = "data/krkn_operator_crds.yaml"
 # Marks a column's description as taken from the field its jsonPath names.
 BORROW = "crd-field"
 _HEADINGS = {"spec": "Spec", "status": "Status", "columns": "kubectl columns"}
@@ -45,19 +50,35 @@ def _emit_one(website_root, scenario, source, records, source_ref):
     return out, [(scenario, source) + g for g in gaps]
 
 
+def _emit_index(website_root, index):
+    path = Path(website_root) / INDEX_DATA
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(HEADER + yaml.dump(index, sort_keys=True, allow_unicode=True,
+                                       default_flow_style=False), encoding="utf-8")
+    return path
+
+
 def emit(website_root, operator_root, source_ref="HEAD"):
-    """Write data/params/<plural>/<section>.yaml. Returns (paths, gaps)."""
+    """Write data/params/<plural>/<section>.yaml plus the kind index.
+    Returns (paths, gaps)."""
     website_root = Path(website_root)
-    written, gaps = [], []
+    written, gaps, index = [], [], {}
     for path in sorted(Path(operator_root).glob(CRD_GLOB)):
         doc = load_crd(path)
-        scenario = crd_meta(doc)["plural"]
-        for source, records in _records(doc).items():
-            if not records:
+        meta, records = crd_meta(doc), _records(doc)
+        for source, recs in records.items():
+            if not recs:
                 continue
-            out, g = _emit_one(website_root, scenario, source, records, source_ref)
+            out, g = _emit_one(website_root, meta["plural"], source, recs, source_ref)
             written.append(out)
             gaps += g
+        index[meta["plural"]] = {
+            "kind": meta["kind"],
+            "short": meta["short"],
+            "fields": len(records["spec"]) + len(records["status"]),
+        }
+    if index:
+        written.append(_emit_index(website_root, index))
     return written, gaps
 
 
