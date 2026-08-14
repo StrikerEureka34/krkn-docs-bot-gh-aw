@@ -222,6 +222,48 @@ def test_an_upstream_description_removal_is_reported_not_papered_over(repo):
     assert any(g[2] == "surname" and g[3] == "" for g in gaps)
 
 
+def test_drift_reports_a_reference_nothing_links_to(repo):
+    """The safety net that replaces the bot writing links itself: it reports,
+    a human links."""
+    from bot.drift_scanner import operator_findings
+    run(repo)
+    unlinked = [f.scenario for f in operator_findings(repo / "operator", repo / "website")
+                if f.kind == "unlinked"]
+    assert "krknusers" in unlinked
+
+    page = repo / "website" / "content/en/docs/krkn-operator/administration"
+    page.mkdir(parents=True, exist_ok=True)
+    (page / "user-management.md").write_text(
+        '# Users\n\n{{< crd-ref crd="krknusers" >}}\n', encoding="utf-8")
+    unlinked = [f.scenario for f in operator_findings(repo / "operator", repo / "website")
+                if f.kind == "unlinked"]
+    assert "krknusers" not in unlinked
+    assert "krknusergroups" in unlinked
+
+
+def test_drift_ignores_a_reference_page_linking_to_itself(repo):
+    """The generated pages are the target, so their own calls must not count."""
+    from bot.drift_scanner import _linked_crds
+    run(repo)
+    assert _linked_crds(repo / "website") == set()
+
+
+def test_drift_sees_a_field_the_tables_have_not_caught_up_with(repo):
+    from bot.drift_scanner import operator_findings
+    run(repo)
+    crd = repo / "operator" / "config" / "crd" / "bases" / \
+        "krkn.krkn-chaos.dev_krknusers.yaml"
+    crd.write_text(crd.read_text(encoding="utf-8").replace(
+        "              surname:\n",
+        "              nickname:\n                type: string\n"
+        "                description: What to call them\n              surname:\n"),
+        encoding="utf-8")
+    missing = [(f.scenario, f.param) for f in
+               operator_findings(repo / "operator", repo / "website")
+               if f.kind == "missing"]
+    assert ("krknusers", "nickname") in missing
+
+
 def test_an_operator_path_with_no_crds_is_an_error(tmp_path, monkeypatch):
     """Pointing --operator at the wrong directory would otherwise write nothing
     and report success."""

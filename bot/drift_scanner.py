@@ -183,6 +183,8 @@ def _finding_detail(f: Finding) -> str:
         body = f"{f.source}: {f.param} default {f.old} -> {f.new}"
     elif f.kind == "extra":
         body = f"{f.source}: extra {f.param}"
+    elif f.kind == "unlinked":
+        body = "no hand-written page links to this reference"
     else:
         body = f"{f.source}: {f.kind}"
     return f"{body}. source: {f.source_file}, table: {f.table_file}"
@@ -255,6 +257,68 @@ def _ticked_scenarios(prev_body: str) -> dict[str, str]:
     return ticked
 
 
+_CRD_REF_RE = re.compile(r'crd-ref\s+crd="([^"]+)"')
+_OPERATOR_URL = "https://github.com/krkn-chaos/krkn-operator/blob/main"
+
+
+def _linked_crds(website_root) -> set[str]:
+    """Plurals a hand-written operator page points at with a crd-ref call. The
+    reference pages themselves are skipped: they are the link target."""
+    root = Path(website_root) / "content/en/docs/krkn-operator"
+    if not root.exists():
+        return set()
+    return {c for p in root.rglob("*.md") if "api-reference" not in p.parts
+            for c in _CRD_REF_RE.findall(p.read_text(encoding="utf-8"))}
+
+
+def operator_findings(operator_root, website_root, operator_url=_OPERATOR_URL):
+    """CRDs against the committed api-reference tables, plus a reference page
+    nothing links to. Writes nothing, like the rest of the scan."""
+    from bot.crd_parser import crd_columns, crd_fields, crd_meta, load_crd
+    from bot.operator import CRD_GLOB, SECTION, SOURCES
+
+    website_root = Path(website_root)
+    linked, findings = _linked_crds(website_root), []
+    for path in sorted(Path(operator_root).glob(CRD_GLOB)):
+        doc = load_crd(path)
+        plural = crd_meta(doc)["plural"]
+        spec, status = crd_fields(doc, "spec"), crd_fields(doc, "status")
+        by = {"spec": {r.name: r for r in spec}, "status": {r.name: r for r in status}}
+        records = {"spec": spec, "status": status, "columns": crd_columns(doc, by)}
+        source_file = f"{operator_url}/config/crd/bases/{path.name}"
+        for source in SOURCES:
+            if not records[source]:
+                continue
+            table_file = f"data/params/{plural}/{source}.yaml"
+            table = _table_params(website_root / table_file)
+            src = {r.name: (None if r.default is None else str(r.default))
+                   for r in records[source]}
+            if table is None:
+                findings.append(Finding(plural, source, "missing-table",
+                    new=", ".join(sorted(src)), source_file=source_file,
+                    table_file=table_file))
+                continue
+            for name, default in sorted(src.items()):
+                if name not in table:
+                    findings.append(Finding(plural, source, "missing", name,
+                        new=default, source_file=source_file, table_file=table_file))
+                elif table[name] != default:
+                    findings.append(Finding(plural, source, "stale", name,
+                        old=table[name], new=default, source_file=source_file,
+                        table_file=table_file))
+            for name in sorted(table):
+                if name not in src:
+                    findings.append(Finding(plural, source, "extra", name,
+                        old=table[name], source_file=source_file,
+                        table_file=table_file))
+        # Reported, never fixed: which page should link a kind is human knowledge
+        # and lives in no source file.
+        if plural not in linked:
+            findings.append(Finding(plural, "page", "unlinked",
+                source_file=source_file, table_file=f"{SECTION}/{plural}.md"))
+    return findings
+
+
 def format_report(findings, prev_body="") -> str:
     """Render Option A, one checkbox per scenario (the unit /fix acts on) with the
     per-source findings as detail bullets. Preserves a ticked checkbox whose label
@@ -291,12 +355,16 @@ def main() -> None:
     ap.add_argument("--hub-url", default=_DEFAULT_HUB_URL, help="krkn-hub blob base URL")
     ap.add_argument("--krkn", default="krkn", help="Path to krkn repo root (global params)")
     ap.add_argument("--krkn-url", default=_KRKN_URL, help="krkn blob base URL")
+    ap.add_argument("--operator", help="Path to krkn-operator repo root (CRD source)")
     args = ap.parse_args()
 
     require_sources(args.krkn_hub, args.krkn)
     findings = scan(args.krkn_hub, args.website, hub_url=args.hub_url, krkn_root=args.krkn)
     findings += global_findings(args.krkn_hub, args.krkn, args.website,
                                 hub_url=args.hub_url, krkn_url=args.krkn_url)
+    # Optional: the scan still runs without a krkn-operator checkout.
+    if args.operator:
+        findings += operator_findings(args.operator, args.website)
 
     if not args.repo:
         print(format_report(findings))
