@@ -222,6 +222,40 @@ def test_an_upstream_description_removal_is_reported_not_papered_over(repo):
     assert any(g[2] == "surname" and g[3] == "" for g in gaps)
 
 
+def _ui_page(repo, rel, body="# Users\n\nClick Next.\n"):
+    p = repo / "website" / "content/en/docs/krkn-operator" / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_the_bot_points_a_ui_page_at_the_reference(repo):
+    """The shortcode is injected, not a plain link: the kind name and URL are
+    resolved at build time, so a rename fails the build instead of 404ing."""
+    page = _ui_page(repo, "administration/user-management.md")
+    run(repo)
+    text = page.read_text(encoding="utf-8")
+    assert '{{< crd-ref crd="krknusers" >}}' in text
+    assert '{{< crd-ref crd="krknusergroups" >}}' in text
+    assert text.startswith("# Users\n\nClick Next.")
+
+
+def test_linking_is_idempotent(repo):
+    page = _ui_page(repo, "usage/run-scenarios.md")
+    run(repo)
+    once = page.read_text(encoding="utf-8")
+    run(repo)
+    assert page.read_text(encoding="utf-8") == once
+
+
+def test_a_page_the_map_names_but_the_site_lacks_is_skipped(repo):
+    """A renamed page must not crash the run. drift_scanner reports it instead."""
+    _ui_page(repo, "usage/chaos-studio.md")
+    written = run(repo)[2]
+    assert not any("run-scenarios" in str(p) for p in written)
+    assert any("chaos-studio" in str(p) for p in written)
+
+
 def test_drift_reports_a_reference_nothing_links_to(repo):
     """The safety net that replaces the bot writing links itself: it reports,
     a human links."""

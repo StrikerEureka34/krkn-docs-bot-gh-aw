@@ -169,6 +169,39 @@ def scaffold(website_root, operator_root):
         if not index.exists() or index.read_text(encoding="utf-8") != text:
             index.write_text(text, encoding="utf-8")
             written.append(index)
+    return written + link_pages(website_root)
+
+
+# ponytail: hardcoded, like globals._PAGES. Which page describes which kind is a
+# human judgement that appears in no source file, so a new kind needs a row here.
+_PAGE_LINKS = {
+    "administration/user-management.md": ("krknusers", "krknusergroups"),
+    "administration/cluster-management.md": ("krknoperatortargets", "krkntargetrequests"),
+    "administration/provider-configuration.md": ("krknoperatortargetproviders",
+                                                 "krknoperatortargetproviderconfigs"),
+    "usage/run-scenarios.md": ("krknscenarioruns",),
+    "usage/chaos-studio.md": ("krkngraphruns",),
+    "usage/file-management.md": ("krknfiletypes",),
+}
+
+
+def link_pages(website_root):
+    """Point each hand-written page at the reference for the kinds it describes.
+
+    Injects the shortcode rather than a plain link, so the kind name and URL are
+    resolved at build time and a renamed CRD fails the build instead of leaving a
+    dead link. Idempotent, and a missing page is left for drift_scanner to report
+    rather than crashed on."""
+    root = Path(website_root) / "content/en/docs/krkn-operator"
+    written = []
+    for rel, crds in _PAGE_LINKS.items():
+        page = root / rel
+        if not page.exists() or "crd-ref" in (text := page.read_text(encoding="utf-8")):
+            continue
+        refs = " &ensp; ".join(f'{{{{< crd-ref crd="{c}" >}}}}' for c in crds)
+        page.write_text(f"{text.rstrip()}\n\n---\n\n**API reference:** {refs}\n",
+                        encoding="utf-8")
+        written.append(page)
     return written
 
 
