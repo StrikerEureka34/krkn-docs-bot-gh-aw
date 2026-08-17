@@ -23,11 +23,30 @@ engine:
   id: copilot
   model: gpt-4o-mini
 
+# NVIDIA PATH 1 of 3, disabled 2026-08-18. To swap: comment the engine above,
+# uncomment this, and do the same at NVIDIA PATH 2 and 3.
+# The api-proxy permits only copilot/*, anthropic/*, openai/*, google/*,
+# gemini/*, so name one the provider also hosts. 20b not 120b: the 120b took
+# 171s on the free tier. Why the workarounds exist: github/gh-aw#50113 and
+# docs/2026-08-17-nvidia-nim-engine-check.md.
+# engine:
+#   id: copilot
+#   model: openai/gpt-oss-20b
+#   env:
+#     COPILOT_PROVIDER_BASE_URL: https://integrate.api.nvidia.com/v1
+#     COPILOT_PROVIDER_API_KEY: ${{ secrets.LLM_API_KEY }}
+#     COPILOT_PROVIDER_TYPE: openai
+# tools:
+#   bash: ["*"]
+
 steps:
   - name: Checkout website
     uses: actions/checkout@v7
     with:
       persist-credentials: false
+  # Before Resolve scenarios, which uses bot.targets.
+  - name: Install docs bot
+    run: pip3 install "git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@main"
   - name: Resolve scenarios
     id: scn
     env:
@@ -44,8 +63,11 @@ steps:
       else
         scenarios="$(printf '%s' "$COMMENT_BODY" | awk 'NR==1{$1="";print}')"
         if [ -z "$scenarios" ] && [ -n "$PR_NUMBER" ]; then
+          # bot.targets, not a grep: a CRD plural is a group in data/params but
+          # only bot.operator regenerates it. Unit-tested, since /resync cannot
+          # be exercised on a fork.
           scenarios="$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename' 2>/dev/null \
-            | grep -oE 'data/params/[a-z0-9-]+/' | cut -d/ -f3 | sort -u | tr '\n' ' ')"
+            | python3 -m bot.targets --website .)"
         fi
       fi
       scenarios="$(echo $scenarios | tr -s ' ')"
@@ -63,8 +85,6 @@ steps:
         esac
       done
       echo "scenarios=$scenarios" >> "$GITHUB_OUTPUT"
-  - name: Install docs bot
-    run: pip3 install "git+https://github.com/StrikerEureka34/krkn-docs-bot-gh-aw.git@main"
   - name: Clone krkn-hub source
     run: git clone --depth 1 https://github.com/StrikerEureka34/krkn-hub.git "$RUNNER_TEMP/krkn-hub"
   - name: Clone krkn source
@@ -81,14 +101,15 @@ steps:
       KRKN_PATH: ${{ runner.temp }}/krkn
       KRKN_OPERATOR_PATH: ${{ runner.temp }}/krkn-operator
       GH_AW_REPORT_DIR: ${{ runner.temp }}
-      # Custom steps run before the firewall is installed, so this needs no
-      # network.allowed entry. The bot's built-in endpoint is the project's own
-      # model; the fork overrides all three to Copilot, which is what it already
-      # authenticates against. The operator source needs none of this: its CRDs
-      # describe every field, so that target never reaches the model rung.
+      # Runs before the firewall is installed, so no network.allowed entry.
+      # The operator target never reaches the model: its CRDs describe themselves.
       LLM_BASE_URL: https://api.githubcopilot.com
       LLM_API_KEY: ${{ secrets.COPILOT_GITHUB_TOKEN }}
       LLM_MODEL: gpt-4o
+      # NVIDIA PATH 2 of 3, disabled 2026-08-18. Swap with the three above.
+      # LLM_BASE_URL: https://integrate.api.nvidia.com/v1
+      # LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      # LLM_MODEL: nvidia/nemotron-3.5-lightning-30b-a3b
     run: |
       for target in ${{ steps.scn.outputs.scenarios }}; do
         echo "Generating: $target"
@@ -145,6 +166,40 @@ steps:
       # injection point here; a heredoc body is not.
       cat "$RUNNER_TEMP/gaps.md" >> "$RUNNER_TEMP/commit-msg.txt" 2>/dev/null || true
       git commit -s -F "$RUNNER_TEMP/commit-msg.txt" || echo "no changes to commit"
+  # NVIDIA PATH 3 of 3, disabled 2026-08-18. Uncomment this whole step when
+  # swapping, and note it must stay in steps: not post-steps:, which compile in
+  # after "Ingest agent output" has already read the file.
+  #
+  # It replaces the agent: gh-aw needs two inputs, the NDJSON item for branch,
+  # title and body, and a patch for the file changes. On Copilot the agent
+  # supplies the item and AWF the patch, but in BYOK mode Copilot CLI sends no
+  # tool definitions, so the agent cannot call the tool at all.
+  #
+  # - name: Request the pull request
+  #   env:
+  #     RUN_NUMBER: ${{ github.run_number }}
+  #   run: |
+  #     OUT="${GH_AW_SAFE_OUTPUTS:-${RUNNER_TEMP}/gh-aw/safeoutputs/outputs.jsonl}"
+  #     mkdir -p "$(dirname "$OUT")"
+  #     python3 - >> "$OUT" <<'SAFE_OUTPUT'
+  #     import json, os
+  #     print(json.dumps({
+  #         "type": "create_pull_request",
+  #         "branch": "docs-sync-" + os.environ["RUN_NUMBER"],
+  #         "title": "Regenerate parameter tables",
+  #         "body": (
+  #             "Parameter tables regenerated from source. The commit message "
+  #             "lists the targets, the file counts and the source files.\n\n"
+  #             "These files are generated. Edit the source, not the table."
+  #         ),
+  #     }))
+  #     SAFE_OUTPUT
+  #
+  #     SLUG="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]' | tr '/' '-')"
+  #     mkdir -p /tmp/gh-aw
+  #     git format-patch -1 HEAD --stdout \
+  #       > "/tmp/gh-aw/aw-${SLUG}-docs-sync-${RUN_NUMBER}.patch"
+  #     echo "requested a pull request for docs-sync-${RUN_NUMBER}"
 
 network:
   allowed:
@@ -155,13 +210,13 @@ max-turns: 3
 timeout-minutes: 15
 
 safe-outputs:
+  # Threat detection is on. It reuses the engine, so turn it off when swapping to
+  # a rate-limited provider: `threat-detection: false`, here under safe-outputs
+  # and not under create-pull-request.
   github-app:
     app-id: ${{ vars.APP_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
   create-pull-request:
-    # Threat detection (a separate ~68k-token LLM scan) runs by default and is
-    # kept ON for the mentor demo. To disable it for this workflow, add:
-    #   threat-detection: false
     target-repo: "StrikerEureka34/website_2"
     draft: true
     title-prefix: "[docs-sync] "
