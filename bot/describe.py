@@ -10,7 +10,9 @@ from dataclasses import asdict
 from pathlib import Path
 
 MAX_LEN = 120
-_TIMEOUT = 30
+# 30s was too tight: a free-tier endpoint answered the same prompt in 20s, 27s
+# and 83s within one hour, so the limit has to cover the slow end, not the fast.
+_TIMEOUT = int(os.environ.get("LLM_TIMEOUT", "120"))
 # The endpoint the project runs. Only the key is a secret; the env overrides are
 # for local experiments, so CI needs LLM_API_KEY and nothing else.
 _BASE_URL = "https://model.cclm-chaos.aws.rhperfscale.org/v1"
