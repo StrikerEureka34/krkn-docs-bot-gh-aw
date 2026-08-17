@@ -306,3 +306,48 @@ def test_an_operator_path_with_no_crds_is_an_error(tmp_path, monkeypatch):
                                      "--website", str(tmp_path / "website")])
     with pytest.raises(FileNotFoundError, match="No CRDs"):
         operator.main()
+
+
+def _report(findings):
+    from bot.drift_scanner import format_report
+    return format_report(findings)
+
+
+def _finding(**kw):
+    from bot.drift_scanner import Finding
+    base = dict(scenario="krknusers", source="spec", kind="missing",
+                param="nickname", source_file="src", table_file="tbl")
+    return Finding(**{**base, **kw})
+
+
+def test_an_operator_finding_offers_the_operator_target():
+    """The CRD plural groups the report, but `/fix krknusers` routes to doc_bot."""
+    md = _report([_finding(target="operator")])
+    assert "`/fix operator`" in md
+    assert "/fix krknusers" not in md
+
+
+def test_a_krkn_hub_finding_still_offers_its_own_scenario():
+    md = _report([_finding(scenario="node-scenarios", source="krkn-hub", target=None)])
+    assert "`/fix node-scenarios`" in md
+
+
+def test_an_unlinked_only_group_offers_no_command_and_names_the_real_fix():
+    """No `/fix` links a page, so offering one would send a reader to a command
+    that silently does nothing."""
+    md = _report([_finding(kind="unlinked", source="page", param=None,
+                           target="operator", table_file="ref/krknusers.md")])
+    # The preamble and the guidance both say the word, so pin the offer itself.
+    assert "Fix with `/fix" not in md
+    assert "_PAGE_LINKS" in md and 'crd-ref crd="krknusers"' in md
+    assert "Needs a human" in md
+
+
+def test_a_mixed_group_keeps_the_command_and_flags_the_part_it_cannot_do():
+    md = _report([_finding(target="operator"),
+                  _finding(kind="unlinked", source="page", param=None,
+                           target="operator")])
+    assert "`/fix operator`" in md
+    assert "plus a link no `/fix` can add" in md
+    # The command covers the rest, so it must not claim to cover everything.
+    assert "The rest is safe to regenerate" in md
