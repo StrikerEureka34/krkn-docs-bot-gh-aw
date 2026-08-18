@@ -399,19 +399,23 @@ grep -c "#" krkn-hub/*/env.sh | sort -t: -k2 -rn | head
 
 ## 12. Known gaps
 
+**No open defect in the bot's own extraction logic.** What is left is one
+configuration value and two things outside the package:
+
 | # | Gap | Where |
 | --- | --- | --- |
-| 1 | An ambiguous page marker takes the first match instead of refusing | `scaffold.py`, `_find_scenario_dir` |
-| 2 | The skip list drops a scenario override without comparing defaults | `parser.py`, `build_skip_list` |
-| 3 | `_TIMEOUT` is hardcoded at 30s, shorter than a slow endpoint's reply. The `LLM_TIMEOUT` fix is prepared on its own branch | `describe.py` |
-| 4 | The krkn-hub and krkn triggers still dispatch to a fork. The krkn-operator one does not | `krkn-hub-template/`, `krkn-template/` |
-| 5 | The krkn source, link integrity and config-block drift, is still an open PR | `docsync-bot` PR #12 |
+| 1 | `_TIMEOUT` is hardcoded at 30s, shorter than a slow endpoint's reply. Fixed in the gh-aw fork, where it reads `LLM_TIMEOUT` with a 120s default. Upstream still waits on that branch | `describe.py` |
+| 2 | The krkn-hub and krkn triggers still dispatch to a fork. The krkn-operator one does not | `krkn-hub-template/`, `krkn-template/` |
+| 3 | The krkn source, link integrity and config-block drift, is still an open PR | `docsync-bot` PR #12 |
 
-Items 1 and 2 are the only defects in the bot's own parsing logic, and both are a
-few lines. Items 3 and 4 are covered in
+Items 1 and 2 are covered in
 [fork-setup.md](fork-setup.md#gaps-to-close-in-the-shipped-template).
 
-Closed since the last revision: `/resync` routing CRD plurals to the wrong
-generator, now `targets.py`; and the shipped template not wiring the describer,
-cloning krkn-operator or routing `operator`, all now in
-`website-template/doc-sync.md`.
+### Closed
+
+| Was | Now |
+| --- | --- |
+| An ambiguous page marker took the first match | `_find_scenario_dir` raises on a duplicate id, and sorts so the answer never depends on the runner's filesystem order |
+| The skip list dropped a scenario override without comparing defaults | `build_skip_list` carries each default, and `is_global` keeps a param whose default the scenario changed |
+| `/resync` routed CRD plurals to the krkn-hub generator | `targets.py`, unit-tested because a fork PR gets no secrets |
+| The shipped template wired no describer, cloned no krkn-operator and had no `operator` route | All three in `website-template/doc-sync.md` |
