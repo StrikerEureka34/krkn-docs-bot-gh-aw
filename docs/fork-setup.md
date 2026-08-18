@@ -303,11 +303,35 @@ path:
 | `COPILOT_PROVIDER_TYPE` | The wire dialect, `openai` for anything OpenAI-compatible. Not special-cased by gh-aw, it is passed to Copilot CLI |
 
 The model name still has to satisfy the proxy allowlist **and** be one the
-provider hosts. The pair we proved is `openai/gpt-oss-20b` on
-`integrate.api.nvidia.com`. Not the 120b: it took 171s per call on the free tier
-and hit `ECONNRESET` at 290s.
+provider hosts. Only two of NVIDIA's whole catalog clear the proxy:
+`openai/gpt-oss-20b`, which is what we proved, and `openai/gpt-oss-120b`, which
+gave transient key errors, took 171s per call on the free tier and hit
+`ECONNRESET` at 290s.
 
 Strict mode is mandatory on public repos, and `krkn-chaos/website` is public.
+
+The full investigation, all eight runs, is
+[docsync-bot#24](https://github.com/krkn-chaos/docsync-bot/issues/24). Its
+evidence chain, which we re-verified:
+[krkn-hub#61](https://github.com/StrikerEureka34/krkn-hub/pull/61) merged
+07:27:57Z carrying a parameter nothing described, run **32006043805** at 07:30 on
+the NIM env, and [website_2#86](https://github.com/StrikerEureka34/website_2/pull/86)
+with exactly one `description_source: llm` row. The trigger was built so the
+model was the only thing that could have filled it.
+
+### Telling a dead key from a quiet one
+
+A bad `LLM_API_KEY` fails the same way a missing one does, by design: the run
+stays green and the cells come out blank. So **"the run passed" is not the
+acceptance check**.
+
+| Where to look | What a working key shows | What a dead one shows |
+| --- | --- | --- |
+| The gap table in the commit message | rows sourced `llm` | `model unavailable: endpoint returned HTTP 401: ...` |
+
+Check that after setting the secret, and after any provider change. Ours is
+invalid at the time of writing, so it needs revalidating before the describer is
+relied on.
 
 ### Threat detection
 
@@ -415,17 +439,44 @@ matter. A merge produces a push either way.
 ### Gaps to close in the shipped template
 
 `website-template/doc-sync.md` now matches the workflow we tested: three clones,
-three target shapes, `bot.targets` for `/resync`, the describer wired, the gap
-report rendered into the commit message, and production `roles` and `target-repo`.
-One gap is left:
+three target shapes, `bot.targets` for `/resync`, the gap report in the commit
+message, and production `roles` and `target-repo`. One gap is left:
 
 | Gap | Consequence |
 | --- | --- |
 | `krkn-hub-template/` and `krkn-template/` still dispatch to a fork | Those two triggers would fire at the wrong website. The krkn-operator trigger already names production |
 
-The describer timeout is no longer one of them. `_TIMEOUT` reads `LLM_TIMEOUT`
-with a 120s default, because the same prompt measured 20.6s, 27.4s and 83.3s
-within one hour on a free tier and the old hardcoded 30s cut the slow end off.
+### It ships as two PRs
+
+The operator coverage and the choice of inference endpoint are separate
+decisions, so they are separate reviews:
+
+| PR | Contains |
+| --- | --- |
+| `feat/krkn-operator-source` | The source itself: the CRD parser, the generator, the drift coverage, the trigger, the shortcode, and the workflow's three clones and target routing. **No `LLM_*` at all**, which is safe because the operator target never calls the model |
+| `fix/describer-config` | The describer: `LLM_*` wired to NVIDIA NIM with Copilot commented beside it, `_TIMEOUT` reading `LLM_TIMEOUT` with a 120s default, and a refusal to send the key over plaintext |
+
+### The model key follows the endpoint
+
+`LLM_API_KEY` is the only model credential, but **what it has to be, and what it
+is worth to an attacker, depends entirely on `LLM_BASE_URL`**:
+
+| Endpoint | The key is | Blast radius if leaked |
+| --- | --- | --- |
+| An inference provider, the shipped default | an inference key | That provider's quota. No repo write, no GitHub scope |
+| `https://api.githubcopilot.com` | a GitHub token with Copilot access | **A GitHub credential.** Whatever that token can do |
+
+We hit this ourselves: the deployed lock on the fork reads
+`LLM_API_KEY: ${{ secrets.COPILOT_GITHUB_TOKEN }}`, so on that deployment the
+"model key" is a GitHub token. Shipping NVIDIA as the default is what makes the
+one-credential story true rather than merely tidy.
+
+`LLM_BASE_URL` must be `https`. The key travels on it as a bearer header, so
+`describe.py` refuses a plaintext base rather than sending it.
+
+`_TIMEOUT` reads `LLM_TIMEOUT`, default 120s, because the same prompt measured
+20.6s, 27.4s and 83.3s within one hour on a free tier and the old hardcoded 30s
+cut the slow end off.
 
 The describer env now ships as the combination we ran green:
 
@@ -574,4 +625,4 @@ Symptom -> cause -> fix.
 - Codex dropping chat/completions: [openai/codex#7782](https://github.com/openai/codex/discussions/7782)
 - [`create-github-app-token`](https://github.com/actions/create-github-app-token)
 - [App permissions reference](https://docs.github.com/en/rest/authentication/permissions-required-for-github-apps)
-- Our full BYOK investigation: [2026-08-17-nvidia-nim-engine-check.md](2026-08-17-nvidia-nim-engine-check.md)
+- Our BYOK investigation, filed: [docsync-bot#24](https://github.com/krkn-chaos/docsync-bot/issues/24), with the working notes in [2026-08-17-nvidia-nim-engine-check.md](2026-08-17-nvidia-nim-engine-check.md)

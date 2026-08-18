@@ -456,8 +456,19 @@ Item 1 is covered in
 
 | Was | Now |
 | --- | --- |
-| `_TIMEOUT` hardcoded at 30s, shorter than a slow endpoint's reply | Reads `LLM_TIMEOUT`, default 120s. The same prompt measured 20.6s, 27.4s and 83.3s within one hour on a free tier |
 | An ambiguous page marker took the first match | `_find_scenario_dir` raises on a duplicate id, and sorts so the answer never depends on the runner's filesystem order |
 | The skip list dropped a scenario override without comparing defaults | `build_skip_list` carries each default, and `is_global` keeps a param whose default the scenario changed |
 | `/resync` routed CRD plurals to the krkn-hub generator | `targets.py`, unit-tested because a fork PR gets no secrets |
-| The shipped template wired no describer, cloned no krkn-operator and had no `operator` route | All three in `website-template/doc-sync.md` |
+| The shipped template cloned no krkn-operator and had no `operator` route | Both in `website-template/doc-sync.md` |
+| `emitter.py` keyed two conditions off the source **name**, so every CRD enum and secret marker would have been dropped | Narrowed, and pinned by three tests |
+
+### Landing in `fix/describer-config`, not the operator PR
+
+Choosing an inference endpoint is a separate decision from adding a source, so
+these ship as the second PR:
+
+| | |
+| --- | --- |
+| `_TIMEOUT` hardcoded at 30s | Reads `LLM_TIMEOUT`, default 120s. The same prompt measured 20.6s, 27.4s and 83.3s within one hour on a free tier |
+| The template wired no describer | `LLM_*` set, NVIDIA NIM active with Copilot commented beside it |
+| Nothing forced the bearer onto TLS | `describe.py` refuses a non-`https` `LLM_BASE_URL` rather than sending the key |
