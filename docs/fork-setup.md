@@ -300,6 +300,12 @@ path:
 | `COPILOT_PROVIDER_BASE_URL` | Activates BYOK, and gh-aw adds the hostname to the firewall allow-list automatically |
 | `COPILOT_PROVIDER_API_KEY` | A sanctioned `${{ secrets.* }}` exception under strict mode, and stripped from the agent container |
 | `COPILOT_PROVIDER_BEARER_TOKEN` | Same treatment |
+| `COPILOT_PROVIDER_TYPE` | The wire dialect, `openai` for anything OpenAI-compatible. Not special-cased by gh-aw, it is passed to Copilot CLI |
+
+The model name still has to satisfy the proxy allowlist **and** be one the
+provider hosts. The pair we proved is `openai/gpt-oss-20b` on
+`integrate.api.nvidia.com`. Not the 120b: it took 171s per call on the free tier
+and hit `ECONNRESET` at 290s.
 
 Strict mode is mandatory on public repos, and `krkn-chaos/website` is public.
 
