@@ -452,23 +452,55 @@ groups, so the whole report is three lines until something is expanded:
 <details><summary><b>krkn-operator CRDs</b> (9)</summary>
 ```
 
+A group whose items need a person says so in the header, so nothing important
+hides behind the collapse:
+
+```
+▸ krkn-operator CRDs (9) · 🔴 1 needs a maintainer
+```
+
 Inside a group, one checkbox per scenario or CRD, which is the unit `/fix` acts
 on, and a nested `<details>` holding the per-source finding tables. A tick is
 matched against the finding text, so it survives only while that finding is
 unchanged: new drift cannot hide behind a box someone already ticked.
 
-The command is on the checkbox line, and it names the generator, not the group:
+Every item lands at one of three levels. Nothing is marked when `/fix` simply
+does it, and the marker is never generic:
+
+| Marker | Meaning |
+| --- | --- |
+| none | `/fix` regenerates it from source |
+| `⚠️ **Review first:**` | `/fix` does it, but it deletes a documented row |
+| `🔴 **Maintainer needed:**` | `/fix` provably cannot, and the text names why for that item |
 
 | Finding | Command |
 | --- | --- |
 | `missing-table`, `missing`, `stale` | `/fix <scenario>`, `/fix globals`, `/fix operator` |
+| `missing-link` | `/fix operator`. It adds the `crd-ref` call itself |
 | `extra` | The same command, but it **deletes a documented row**, so read the table first |
-| `unlinked` | **None.** Add the kind to `_PAGE_LINKS` in `bot/operator.py`, or put a `{{< crd-ref crd="..." >}}` call on the page that describes it |
+| `unlinked` | **None**, and the item says which of three jobs it is: the kind is unmapped, its page does not exist, or that page already carries a `crd-ref` |
 
 Two deliberate choices here:
 
 - **One `/fix operator` covers every CRD.** Regeneration is idempotent and git stages only real changes, so a per-CRD target would produce an identical diff through a second code path.
-- **An `unlinked` finding offers no command**, because none would work. `bot.operator` only links pages listed in `_PAGE_LINKS`, so every new CRD starts unlinked and needs a human to decide which page owns it.
+- **`missing-link` and `unlinked` are separate on purpose.** They looked identical until 2026-08-18, and the report told maintainers to hand-edit `_PAGE_LINKS` for all nine CRDs while `link_pages` was about to add every one of those links by itself.
+
+### What the bot will not do about links
+
+`link_blocker` in `bot/operator.py` answers "will `link_pages` link this kind",
+sharing its predicate with `link_pages` so the report cannot promise a link
+nothing writes. What is left over is genuinely a person's call:
+
+| Human error | Caught by | Result |
+| --- | --- | --- |
+| A kind that does not exist, `crd="krknuser"` | `crd-ref.html` calls `errorf` against the generated index | **Hugo Build Check fails the PR** |
+| A CRD later renamed or deleted, link left behind | The same gate, once the index regenerates | Red build |
+| Only one of a page's two kinds linked by hand | `link_blocker` | Reported, naming that cause |
+| A link on a page that does not describe that kind | Nothing | **Not detected.** A `crd-ref` anywhere counts. `link_pages` still writes the mapped page, so the cost is a stray link, not a broken one |
+
+That last row is deliberate. Requiring the link to sit on the mapped page would
+treat the bot's hardcoded `_PAGE_LINKS` guess as more authoritative than a
+maintainer's judgement, which is the opposite of why `unlinked` refuses to guess.
 
 &ensp;
 
@@ -518,7 +550,8 @@ Symptom -> cause -> fix.
 - `/resync` finds no targets -> the PR changed nothing under `data/params/`, `data/krkn_operator_crds.yaml` or the api-reference pages -> name the target with `/fix` instead
 - `/resync` on an operator PR runs `bot.doc_bot` -> the deployed lock predates `bot.targets`, or `data/krkn_operator_crds.yaml` is missing from the checkout -> recompile, and check the index exists
 - A scenario runs but writes nothing -> the website has no page carrying that scenario's marker -> add the page first
-- A CRD's page never gets linked -> `unlinked` has no `/fix` -> add the kind to `_PAGE_LINKS`, or place a `crd-ref` call by hand
+- A CRD's page never gets linked -> read the item. `missing-link` means `/fix operator` does it; `unlinked` names which of the three human jobs it is
+- A kind stays `unlinked` after adding a `crd-ref` to its page -> the call went on a page `_PAGE_LINKS` does not map to that kind -> the scan counts it as linked; check the mapped page instead
 
 ### Actions and permissions
 

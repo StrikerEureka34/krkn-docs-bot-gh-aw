@@ -277,17 +277,49 @@ but the page around them is editable and a hand edit survives regeneration.
 
 ## 9. What a `/fix` can and cannot repair
 
-`drift_scanner` emits five kinds of finding. Four are regenerable and one is not,
-and the report has to say which is which or it sends people to a command that
-does nothing.
+`drift_scanner` emits six kinds of finding. Five are regenerable and one is not,
+and the report has to say which is which. Getting it wrong in either direction is
+a bug: a command that does nothing wastes a maintainer's time, and a missing
+command makes the bot look less capable than it is.
 
 | Kind | Means | Command |
 | --- | --- | --- |
 | `missing-table` | No data file exists for that source yet | `/fix <target>` |
 | `missing` | The source has a param the table does not | `/fix <target>` |
 | `stale` | A default or type moved in the source | `/fix <target>` |
-| `extra` | The table has a row the source dropped | `/fix <target>`, but it **deletes documented content**, so a human reads it first |
-| `unlinked` | No hand-written page links to a generated CRD page | **None.** Add the kind to `_PAGE_LINKS` in `operator.py`, or place a `crd-ref` call by hand |
+| `missing-link` | Nothing links a generated CRD page yet, and `link_pages` will | `/fix operator` |
+| `extra` | The table has a row the source dropped | `/fix <target>`, but it **deletes documented content**, so it is marked `⚠️ Review first` |
+| `unlinked` | `link_pages` provably will not link it | **None**, and the finding names which of three blockers it is, marked `🔴 Maintainer needed` |
+
+### `link_blocker`, and the bug that produced it
+
+Until 2026-08-18 there was no `missing-link`. `operator_findings` decided
+`unlinked` from one test, `plural not in linked`, where `linked` is scraped from
+pages that happen to carry a `crd-ref` today. It never asked the question that
+decides the answer: **would `link_pages` fix this?**
+
+Against `website_2` that misfired on all 9 CRDs. Every one was mapped in
+`_PAGE_LINKS`, every target page existed, and the issue still told maintainers
+nine times to go hand-edit Python.
+
+So `link_blocker` lives next to `link_pages` in `operator.py` and both call the
+same `_page_ready` predicate. It returns `None`, or a `(reason, fix)` pair:
+
+| Blocker | Whose job |
+| --- | --- |
+| `None` | The bot's. Emitted as `missing-link` |
+| The kind is in no `_PAGE_LINKS` row | A person's, and editorial |
+| Its mapped page does not exist | A person's, write the page |
+| That page already carries a `crd-ref` | A person's, `link_pages` never touches such a page again |
+
+The reason rides on the checkbox and the fix on the detail bullet, so neither
+repeats the other and both are specific to that item.
+
+**One case is deliberately not detected.** `_linked_crds` counts a `crd-ref`
+anywhere outside `api-reference`, so a call placed on a page that does not
+describe that kind satisfies it. Requiring the mapped page would make the bot's
+hardcoded guess outrank a maintainer's choice, and `link_pages` writes the mapped
+page regardless, so the cost is a stray link rather than a broken one.
 
 ### Why `Finding` carries a `target`
 
@@ -311,10 +343,19 @@ order; `_group_of` picks a group from the findings themselves, `operator` by
 `target` and `globals` by scenario name, so nothing is keyed off a hardcoded list
 of scenarios.
 
+A group header carries a `🔴 N need a maintainer` count when it has any, because
+a marker inside a collapsed group is invisible, which would defeat the collapse.
+
 Ticks are matched against the rendered checkbox label, which encodes the finding
 counts. A finding that changes therefore loses its tick, so new drift cannot hide
 behind a box someone already ticked. The parser accepts a body with no `<details>`
-in it at all, which is what the first run after this change reads.
+in it at all, which is what the first run after a layout change reads.
+
+The markers are emoji rather than `$\color{red}$`. They have to render in a
+collapsed `<summary>`, in notification email and on mobile, and none of those run
+a math renderer. `main()` also reconfigures stdout to UTF-8 before printing,
+since a Windows console defaults to cp1252 and a preview run should not die on
+its own output.
 
 &ensp;
 
@@ -400,13 +441,14 @@ grep -c "#" krkn-hub/*/env.sh | sort -t: -k2 -rn | head
 ## 12. Known gaps
 
 **No open defect in the bot's own extraction logic.** What is left is one
-configuration value and two things outside the package:
+configuration value, two things outside the package, and one deliberate boundary:
 
 | # | Gap | Where |
 | --- | --- | --- |
 | 1 | `_TIMEOUT` is hardcoded at 30s, shorter than a slow endpoint's reply. Fixed in the gh-aw fork, where it reads `LLM_TIMEOUT` with a 120s default. Upstream still waits on that branch | `describe.py` |
 | 2 | The krkn-hub and krkn triggers still dispatch to a fork. The krkn-operator one does not | `krkn-hub-template/`, `krkn-template/` |
 | 3 | The krkn source, link integrity and config-block drift, is still an open PR | `docsync-bot` PR #12 |
+| 4 | A `crd-ref` on a page that does not describe that kind is counted as linked. A boundary, not a defect: see §9 | `drift_scanner.py`, `_linked_crds` |
 
 Items 1 and 2 are covered in
 [fork-setup.md](fork-setup.md#gaps-to-close-in-the-shipped-template).
