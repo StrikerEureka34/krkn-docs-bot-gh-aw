@@ -163,8 +163,12 @@ def describe(scenario, names, ctx, transport=None, errors=None):
         key = os.environ.get("LLM_API_KEY")
         if not key:
             return _fail(errors, "no LLM_API_KEY set")
-        url = os.environ.get("LLM_BASE_URL", _BASE_URL).rstrip("/") + "/chat/completions"
-        transport = lambda body: _post(url, key, body)  # noqa: E731
+        base = os.environ.get("LLM_BASE_URL", _BASE_URL).rstrip("/")
+        # The key rides this connection as a bearer header, so a plaintext base
+        # would put it on the wire. Refuse rather than send it.
+        if not base.startswith("https://"):
+            return _fail(errors, f"LLM_BASE_URL must be https, got {base[:40]!r}")
+        transport = lambda body: _post(base + "/chat/completions", key, body)  # noqa: E731
     # No response_format: some endpoints reject the field outright, and the reply
     # is parsed with json.loads either way.
     body = {"model": os.environ.get("LLM_MODEL", _MODEL),

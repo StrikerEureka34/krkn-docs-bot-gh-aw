@@ -20,34 +20,6 @@ def test_krkn_hub_omits_absent_optional_fields():
     assert "default" not in data["params"][1]
 
 
-def test_required_none_emits_no_required_key():
-    """A CRD printer column has no requiredness. Emitting False would give the
-    columns table a column reading "No" on every row."""
-    rec = ParamRecord(name="Phase", type="string", required=None)
-    p = yaml.safe_load(emit_data_text("krknusers", "columns", [rec],
-                                      {"Phase": "The phase."}, "r"))["params"][0]
-    assert "required" not in p
-
-
-def test_required_false_still_emits_the_key():
-    """The other half: an optional param says so, it does not go silent."""
-    rec = ParamRecord(name="TIMEOUT", required=False)
-    p = yaml.safe_load(emit_data_text("node-scenarios", "krkn-hub", [rec],
-                                      {"TIMEOUT": "Seconds."}, "r"))["params"][0]
-    assert p["required"] is False
-
-
-def test_a_non_krknctl_source_still_emits_values_and_secret():
-    """The CRD sources are spec/status/columns, so a krknctl-only gate would
-    drop every enum and secret marker the operator carries."""
-    rec = ParamRecord(name="role", type="string", secret=True,
-                      allowed_values=["user", "admin"])
-    p = yaml.safe_load(emit_data_text("krknusers", "spec", [rec],
-                                      {"role": "The role."}, "r"))["params"][0]
-    assert p["secret"] is True
-    assert p["possible_values"] == ["user", "admin"]
-
-
 def test_group_is_emitted_when_present():
     recs = [ParamRecord(name="wait-duration", default="1", group="general")]
     p = yaml.safe_load(emit_data_text(
@@ -191,3 +163,31 @@ def test_a_required_env_param_is_marked():
         "pvc-scenario", "krkn-hub", [ParamRecord(name="PVC_NAME", required=True)],
         {"PVC_NAME": "The PVC."}, "r"))["params"][0]
     assert p["required"] is True
+
+
+def test_required_none_emits_no_required_key():
+    """A CRD printer column has no requiredness. Emitting False would give the
+    columns table a column reading "No" on every row."""
+    rec = ParamRecord(name="Phase", type="string", required=None)
+    p = yaml.safe_load(emit_data_text("krknusers", "columns", [rec],
+                                      {"Phase": "The phase."}, "r"))["params"][0]
+    assert "required" not in p
+
+
+def test_required_false_still_emits_the_key():
+    """The other half: an optional param says so, it does not go silent."""
+    rec = ParamRecord(name="TIMEOUT", required=False)
+    p = yaml.safe_load(emit_data_text("node-scenarios", "krkn-hub", [rec],
+                                      {"TIMEOUT": "Seconds."}, "r"))["params"][0]
+    assert p["required"] is False
+
+
+def test_a_non_krknctl_source_still_emits_values_and_secret():
+    """The CRD sources are spec/status/columns, so a krknctl-only gate would
+    drop every enum and secret marker the operator carries."""
+    rec = ParamRecord(name="role", type="string", secret=True,
+                      allowed_values=["user", "admin"])
+    p = yaml.safe_load(emit_data_text("krknusers", "spec", [rec],
+                                      {"role": "The role."}, "r"))["params"][0]
+    assert p["secret"] is True
+    assert p["possible_values"] == ["user", "admin"]
