@@ -440,23 +440,23 @@ grep -c "#" krkn-hub/*/env.sh | sort -t: -k2 -rn | head
 
 ## 12. Known gaps
 
-**No open defect in the bot's own extraction logic.** What is left is one
-configuration value, two things outside the package, and one deliberate boundary:
+**No open defect in the bot's own logic.** What is left is two things outside the
+package and one deliberate boundary:
 
 | # | Gap | Where |
 | --- | --- | --- |
-| 1 | `_TIMEOUT` is hardcoded at 30s, shorter than a slow endpoint's reply. Fixed in the gh-aw fork, where it reads `LLM_TIMEOUT` with a 120s default. Upstream still waits on that branch | `describe.py` |
-| 2 | The krkn-hub and krkn triggers still dispatch to a fork. The krkn-operator one does not | `krkn-hub-template/`, `krkn-template/` |
-| 3 | The krkn source, link integrity and config-block drift, is still an open PR | `docsync-bot` PR #12 |
-| 4 | A `crd-ref` on a page that does not describe that kind is counted as linked. A boundary, not a defect: see §9 | `drift_scanner.py`, `_linked_crds` |
+| 1 | The krkn-hub and krkn triggers still dispatch to a fork. The krkn-operator one does not | `krkn-hub-template/`, `krkn-template/` |
+| 2 | The krkn source, link integrity and config-block drift, is still an open PR | `docsync-bot` PR #12 |
+| 3 | A `crd-ref` on a page that does not describe that kind is counted as linked. A boundary, not a defect: see §9 | `drift_scanner.py`, `_linked_crds` |
 
-Items 1 and 2 are covered in
+Item 1 is covered in
 [fork-setup.md](fork-setup.md#gaps-to-close-in-the-shipped-template).
 
 ### Closed
 
 | Was | Now |
 | --- | --- |
+| `_TIMEOUT` hardcoded at 30s, shorter than a slow endpoint's reply | Reads `LLM_TIMEOUT`, default 120s. The same prompt measured 20.6s, 27.4s and 83.3s within one hour on a free tier |
 | An ambiguous page marker took the first match | `_find_scenario_dir` raises on a duplicate id, and sorts so the answer never depends on the runner's filesystem order |
 | The skip list dropped a scenario override without comparing defaults | `build_skip_list` carries each default, and `is_global` keeps a param whose default the scenario changed |
 | `/resync` routed CRD plurals to the krkn-hub generator | `targets.py`, unit-tested because a fork PR gets no secrets |

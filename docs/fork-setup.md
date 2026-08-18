@@ -417,12 +417,15 @@ matter. A merge produces a push either way.
 `website-template/doc-sync.md` now matches the workflow we tested: three clones,
 three target shapes, `bot.targets` for `/resync`, the describer wired, the gap
 report rendered into the commit message, and production `roles` and `target-repo`.
-Two gaps are left:
+One gap is left:
 
 | Gap | Consequence |
 | --- | --- |
-| `_TIMEOUT` is 30s | The same prompt measured 20.6s, 27.4s and 83.3s within one hour on a free tier. A fix making it read `LLM_TIMEOUT` with a 120s default is prepared, on its own branch |
 | `krkn-hub-template/` and `krkn-template/` still dispatch to a fork | Those two triggers would fire at the wrong website. The krkn-operator trigger already names production |
+
+The describer timeout is no longer one of them. `_TIMEOUT` reads `LLM_TIMEOUT`
+with a 120s default, because the same prompt measured 20.6s, 27.4s and 83.3s
+within one hour on a free tier and the old hardcoded 30s cut the slow end off.
 
 The describer env now ships as the combination we ran green:
 

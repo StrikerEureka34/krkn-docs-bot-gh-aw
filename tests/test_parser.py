@@ -146,9 +146,8 @@ def test_extract_first_declaration_wins(tmp_path):
 
 
 def test_extract_variable_reference_alone_is_not_a_default(tmp_path):
-    # Was: the literal "$ALERTS_PATH" is kept. It reached the rendered table,
-    # where it tells a reader nothing. With no sibling to resolve against,
-    # reporting no default is better.
+    # Was: the literal "$ALERTS_PATH" reached the rendered table, telling a
+    # reader nothing. With no sibling to resolve against, no default is better.
     recs = _records(tmp_path, "export RESILIENCY_FILE=${RESILIENCY_FILE:=$ALERTS_PATH}\n")
     assert recs["RESILIENCY_FILE"].default is None
 
