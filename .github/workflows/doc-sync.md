@@ -19,25 +19,25 @@ on:
 
 permissions: read-all
 
+# NVIDIA PATH 1 of 3, active 2026-08-20. The api-proxy permits only copilot/*,
+# anthropic/*, openai/*, google/*, gemini/*, so the model names one it allows
+# while BYOK sends the request to NVIDIA. 20b not 120b: the 120b took 171s on
+# the free tier. Background: github/gh-aw#50113 and docsync-bot#24.
 engine:
   id: copilot
-  model: gpt-4o-mini
+  model: openai/gpt-oss-20b
+  env:
+    COPILOT_PROVIDER_BASE_URL: https://integrate.api.nvidia.com/v1
+    COPILOT_PROVIDER_API_KEY: ${{ secrets.LLM_API_KEY }}
+    COPILOT_PROVIDER_TYPE: openai
+tools:
+  bash: ["*"]
 
-# NVIDIA PATH 1 of 3, disabled 2026-08-18. To swap: comment the engine above,
-# uncomment this, and do the same at NVIDIA PATH 2 and 3.
-# The api-proxy permits only copilot/*, anthropic/*, openai/*, google/*,
-# gemini/*, so name one the provider also hosts. 20b not 120b: the 120b took
-# 171s on the free tier. Why the workarounds exist: github/gh-aw#50113 and
-# docs/2026-08-17-nvidia-nim-engine-check.md.
+# Copilot instead. To swap: comment the engine above, uncomment this, and do
+# the same at NVIDIA PATH 2 and 3.
 # engine:
 #   id: copilot
-#   model: openai/gpt-oss-20b
-#   env:
-#     COPILOT_PROVIDER_BASE_URL: https://integrate.api.nvidia.com/v1
-#     COPILOT_PROVIDER_API_KEY: ${{ secrets.LLM_API_KEY }}
-#     COPILOT_PROVIDER_TYPE: openai
-# tools:
-#   bash: ["*"]
+#   model: gpt-4o-mini
 
 steps:
   - name: Checkout website
@@ -103,13 +103,15 @@ steps:
       GH_AW_REPORT_DIR: ${{ runner.temp }}
       # Runs before the firewall is installed, so no network.allowed entry.
       # The operator target never reaches the model: its CRDs describe themselves.
-      LLM_BASE_URL: https://api.githubcopilot.com
-      LLM_API_KEY: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-      LLM_MODEL: gpt-4o
-      # NVIDIA PATH 2 of 3, disabled 2026-08-18. Swap with the three above.
-      # LLM_BASE_URL: https://integrate.api.nvidia.com/v1
-      # LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-      # LLM_MODEL: nvidia/nemotron-3.5-lightning-30b-a3b
+      # NVIDIA PATH 2 of 3, active 2026-08-20.
+      LLM_BASE_URL: https://integrate.api.nvidia.com/v1
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_MODEL: nvidia/nemotron-3.5-lightning-30b-a3b
+      # Copilot instead. LLM_API_KEY must then hold a GitHub token, so it carries
+      # GitHub scope rather than inference only. Swap with the three above.
+      # LLM_BASE_URL: https://api.githubcopilot.com
+      # LLM_API_KEY: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+      # LLM_MODEL: gpt-4o
     run: |
       for target in ${{ steps.scn.outputs.scenarios }}; do
         echo "Generating: $target"
@@ -166,40 +168,38 @@ steps:
       # injection point here; a heredoc body is not.
       cat "$RUNNER_TEMP/gaps.md" >> "$RUNNER_TEMP/commit-msg.txt" 2>/dev/null || true
       git commit -s -F "$RUNNER_TEMP/commit-msg.txt" || echo "no changes to commit"
-  # NVIDIA PATH 3 of 3, disabled 2026-08-18. Uncomment this whole step when
-  # swapping, and note it must stay in steps: not post-steps:, which compile in
-  # after "Ingest agent output" has already read the file.
+  # NVIDIA PATH 3 of 3, active 2026-08-20. Stays in steps: not post-steps:,
+  # which compile in after "Ingest agent output" has already read the file.
   #
   # It replaces the agent: gh-aw needs two inputs, the NDJSON item for branch,
   # title and body, and a patch for the file changes. On Copilot the agent
   # supplies the item and AWF the patch, but in BYOK mode Copilot CLI sends no
   # tool definitions, so the agent cannot call the tool at all.
-  #
-  # - name: Request the pull request
-  #   env:
-  #     RUN_NUMBER: ${{ github.run_number }}
-  #   run: |
-  #     OUT="${GH_AW_SAFE_OUTPUTS:-${RUNNER_TEMP}/gh-aw/safeoutputs/outputs.jsonl}"
-  #     mkdir -p "$(dirname "$OUT")"
-  #     python3 - >> "$OUT" <<'SAFE_OUTPUT'
-  #     import json, os
-  #     print(json.dumps({
-  #         "type": "create_pull_request",
-  #         "branch": "docs-sync-" + os.environ["RUN_NUMBER"],
-  #         "title": "Regenerate parameter tables",
-  #         "body": (
-  #             "Parameter tables regenerated from source. The commit message "
-  #             "lists the targets, the file counts and the source files.\n\n"
-  #             "These files are generated. Edit the source, not the table."
-  #         ),
-  #     }))
-  #     SAFE_OUTPUT
-  #
-  #     SLUG="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]' | tr '/' '-')"
-  #     mkdir -p /tmp/gh-aw
-  #     git format-patch -1 HEAD --stdout \
-  #       > "/tmp/gh-aw/aw-${SLUG}-docs-sync-${RUN_NUMBER}.patch"
-  #     echo "requested a pull request for docs-sync-${RUN_NUMBER}"
+  - name: Request the pull request
+    env:
+      RUN_NUMBER: ${{ github.run_number }}
+    run: |
+      OUT="${GH_AW_SAFE_OUTPUTS:-${RUNNER_TEMP}/gh-aw/safeoutputs/outputs.jsonl}"
+      mkdir -p "$(dirname "$OUT")"
+      python3 - >> "$OUT" <<'SAFE_OUTPUT'
+      import json, os
+      print(json.dumps({
+          "type": "create_pull_request",
+          "branch": "docs-sync-" + os.environ["RUN_NUMBER"],
+          "title": "Regenerate parameter tables",
+          "body": (
+              "Parameter tables regenerated from source. The commit message "
+              "lists the targets, the file counts and the source files.\n\n"
+              "These files are generated. Edit the source, not the table."
+          ),
+      }))
+      SAFE_OUTPUT
+
+      SLUG="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]' | tr '/' '-')"
+      mkdir -p /tmp/gh-aw
+      git format-patch -1 HEAD --stdout \
+        > "/tmp/gh-aw/aw-${SLUG}-docs-sync-${RUN_NUMBER}.patch"
+      echo "requested a pull request for docs-sync-${RUN_NUMBER}"
 
 network:
   allowed:
@@ -210,9 +210,9 @@ max-turns: 3
 timeout-minutes: 15
 
 safe-outputs:
-  # Threat detection is on. It reuses the engine, so turn it off when swapping to
-  # a rate-limited provider: `threat-detection: false`, here under safe-outputs
-  # and not under create-pull-request.
+  # Off while the engine is NVIDIA: it reuses the engine, so it doubles the
+  # calls against a rate-limited free tier. Turn back on when swapping to Copilot.
+  threat-detection: false
   github-app:
     app-id: ${{ vars.APP_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
