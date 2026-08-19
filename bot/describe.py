@@ -117,22 +117,41 @@ def describe_fn(scn, records, reasons, memo=None):
     return fn
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """urllib keeps Authorization across a redirect and allows https -> http, so
+    the endpoint itself could hand our key to any host in plaintext. Returning
+    None raises the 3xx as an HTTPError, which describe() already reports."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+# Built once. build_opener drops the default redirect handler for this subclass.
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def _post(url, key, body):
     req = urllib.request.Request(
         url, data=json.dumps(body).encode("utf-8"), method="POST",
         headers={"Authorization": f"Bearer {key}",
                  "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+    with _OPENER.open(req, timeout=_TIMEOUT) as r:
         return json.loads(r.read())
 
 
-def _body(err):
+def _body(err, key=None):
     """The status alone names no cause: this endpoint answers 400 for an
-    unsupported model and 400 for a malformed body. The body says which."""
+    unsupported model and 400 for a malformed body. The body says which.
+
+    Scrubbed before it is truncated, because this text ends up in a public commit
+    message and Actions secret masking covers logs, not files. A 401 body is a
+    common place for an endpoint to quote the credential back."""
     try:
         text = " ".join(err.read().decode("utf-8", "replace").split())
     except Exception:
         text = ""
+    if key:
+        text = text.replace(key, "***")
     return text[:200] or "no body"
 
 
@@ -159,8 +178,8 @@ def describe(scenario, names, ctx, transport=None, errors=None):
     run."""
     if not names:
         return {}
+    key = os.environ.get("LLM_API_KEY")
     if transport is None:
-        key = os.environ.get("LLM_API_KEY")
         if not key:
             return _fail(errors, "no LLM_API_KEY set")
         base = os.environ.get("LLM_BASE_URL", _BASE_URL).rstrip("/")
@@ -179,7 +198,7 @@ def describe(scenario, names, ctx, transport=None, errors=None):
     try:
         payload = transport(body)
     except urllib.error.HTTPError as e:
-        return _fail(errors, f"endpoint returned HTTP {e.code}: {_body(e)}")
+        return _fail(errors, f"endpoint returned HTTP {e.code}: {_body(e, key)}")
     except Exception as e:
         return _fail(errors, f"endpoint unreachable ({type(e).__name__})")
     try:

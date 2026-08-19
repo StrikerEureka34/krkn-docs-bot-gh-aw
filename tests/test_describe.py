@@ -241,3 +241,61 @@ def test_the_real_model_output_for_retry_wait_passes():
 def test_a_fenced_reply_parses(content):
     """Without response_format the model may wrap the object in a code fence."""
     assert describe("s", ["X"], CTX, transport=reply(content)) == {"X": "Plain."}
+
+
+def test_a_redirect_is_refused_rather_than_followed():
+    """urllib keeps Authorization across a hop and permits https -> http, so a
+    redirect the endpoint chooses would put the key on the wire in plaintext.
+    The https check on the base URL cannot see this, it only sees hop one."""
+    import http.server
+    import threading
+    import urllib.error
+
+    from bot.describe import _post
+
+    seen = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            # Drained before replying, or Windows aborts the half-written request.
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            seen.append(self.headers.get("Authorization"))
+            self.send_response(302)
+            self.send_header("Location", "http://127.0.0.1:9/leaked")
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        with pytest.raises(urllib.error.HTTPError) as e:
+            _post(f"http://127.0.0.1:{srv.server_port}/v1/chat/completions",
+                  "sekrit", {"model": "m"})
+        assert e.value.code == 302
+    finally:
+        srv.shutdown()
+    # Hop one carries the key by design. The whole point is that there is no two.
+    assert seen == ["Bearer sekrit"]
+
+
+def test_an_error_body_does_not_carry_the_key_into_the_report(monkeypatch):
+    """The gap table is appended to a commit message on a public PR, and Actions
+    secret masking covers log output, not file contents."""
+    import io
+    import urllib.error
+
+    monkeypatch.setenv("LLM_API_KEY", "nvapi-SEKRIT-0123456789")
+
+    def boom(body):
+        raise urllib.error.HTTPError(
+            "https://model.example/v1", 401, "Unauthorized", {},
+            io.BytesIO(b'{"error":{"message":"Incorrect API key provided: '
+                       b'nvapi-SEKRIT-0123456789. Check your key."}}'))
+
+    errors = []
+    assert describe("s", ["X"], CTX, transport=boom, errors=errors) == {}
+    assert errors and "HTTP 401" in errors[0]
+    assert "nvapi-SEKRIT-0123456789" not in errors[0]
+    assert "***" in errors[0]
