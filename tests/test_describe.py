@@ -2,7 +2,8 @@ import io
 import urllib.error
 import pytest
 
-from bot.describe import build_prompt, context, describe, describe_fn, validate
+from bot.describe import (build_prompt, context, describe, describe_fn,
+                          first_sentence, validate)
 from bot.parser import ParamRecord
 
 CTX = {"params": {"BLOCK_SIZE": {"type": "number", "default": "512"}}}
@@ -204,7 +205,10 @@ def test_a_rejected_description_is_not_memoised(tmp_path, monkeypatch):
     fn = describe_fn(tmp_path, [ParamRecord(name="X")], reasons, memo)
     assert fn("s", ["X"]) == {}
     assert memo == {}
-    assert reasons["X"] == "rejected: says nothing"
+    # The reason now carries the text as well, so a rejection stays diagnosable
+    # once the reply is gone.
+    assert reasons["X"].startswith("rejected: says nothing")
+    assert "Configures port." in reasons["X"]
 
 
 @pytest.mark.parametrize("text,reason", [
@@ -375,3 +379,48 @@ def test_a_reply_with_no_requested_name_is_printed(capsys):
 
     assert describe("s", ["A"], {}, transport=transport) == {}
     assert "no requested name in the reply" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("text,want", [
+    ("One. Two.", "One."),
+    ("Only one sentence with no stop", "Only one sentence with no stop"),
+    ("Ends in a question? And more.", "Ends in a question?"),
+    ("", ""),
+])
+def test_first_sentence(text, want):
+    assert first_sentence(text) == want
+
+
+def test_an_over_long_reply_is_salvaged_not_discarded():
+    """The model ignores a character budget, so an overflow is usually a second
+    sentence the prompt never asked for. Keep the first rather than lose it."""
+    long = ("Decides whether the generator follows redirect chains and measures "
+            "the final response. When disabled it records the redirect itself "
+            "and moves on to the next request instead of chasing it further.")
+    assert len(long) > 160
+
+    recs = [ParamRecord(name="FOLLOW_REDIRECTS")]
+    reasons = {}
+    import bot.describe as d
+    real = d.describe
+    d.describe = lambda *a, **k: {"FOLLOW_REDIRECTS": long}
+    try:
+        got = describe_fn("http-load", recs, reasons)("http-load", ["FOLLOW_REDIRECTS"])
+    finally:
+        d.describe = real
+    assert got["FOLLOW_REDIRECTS"].endswith("measures the final response.")
+    assert reasons == {}
+
+
+def test_a_rejection_carries_the_text_so_it_can_be_diagnosed():
+    recs = [ParamRecord(name="A")]
+    reasons = {}
+    import bot.describe as d
+    real = d.describe
+    d.describe = lambda *a, **k: {"A": "Configures the port"}   # says nothing
+    try:
+        describe_fn("s", recs, reasons)("s", ["A"])
+    finally:
+        d.describe = real
+    assert "says nothing" in reasons["A"]
+    assert "Configures the port" in reasons["A"]

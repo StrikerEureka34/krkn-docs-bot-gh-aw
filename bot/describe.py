@@ -22,8 +22,8 @@ _PLACEHOLDER = re.compile(r'^(configures?|sets?|specifies|controls?) (the )?\w+\
 
 _SYSTEM = (
     "Write one plain sentence describing each parameter, for a documentation "
-    "table. One sentence, at most 160 characters, no markdown. Describe only what "
-    "the context states. Never state a default, range or unit that is not in that "
+    "table. Exactly one sentence, at most 25 words, no markdown. Describe only "
+    "what the context states. Never state a default, range or unit that is not in that "
     "parameter's own record. Do not repeat the default value; the table shows it "
     "in its own column. If unsure, return an empty string for that parameter. "
     "Match the voice of the examples. Return JSON only: an object mapping each "
@@ -88,6 +88,16 @@ def context(scn, names, records):
     }
 
 
+_SENTENCE_RE = re.compile(r'^(.*?[.!?])(?:\s|$)', re.S)
+
+
+def first_sentence(text):
+    """The prompt asks for one sentence. A reply that runs long is usually two
+    or three, so keep the first rather than discarding a usable description."""
+    found = _SENTENCE_RE.match((text or "").strip())
+    return found.group(1) if found else (text or "").strip()
+
+
 def describe_fn(scn, records, reasons, memo=None):
     """llm_fn for resolve_descriptions. Rejections go into `reasons` so the report
     says why a cell is blank, not only that it is. memo is shared across a
@@ -103,11 +113,21 @@ def describe_fn(scn, records, reasons, memo=None):
         errors = []
         got = describe(scenario, todo, context(scn, todo, records), errors=errors)
         for name, text in got.items():
-            why = validate(text, asdict(by_name[name]))
+            record = asdict(by_name[name])
+            why = validate(text, record)
+            if why and why.startswith("rejected: too long"):
+                # Salvage rather than discard: the overflow is usually a second
+                # sentence the prompt did not ask for.
+                shorter = first_sentence(text)
+                if shorter != text and validate(shorter, record) is None:
+                    text, why = shorter, None
             if why is None:
                 out[name] = memo[name] = text
             else:
-                reasons[name] = why
+                # Carry the text into the reason. Without it a rejection is
+                # unreproducible: the reply is gone by the time anyone reads
+                # the report.
+                reasons[name] = f"{why}, model wrote: {text[:120]}"
         # Three outcomes needing three different fixes: never reached, reached
         # and declined, reached and answered badly. The last is already above.
         silent = [n for n in todo if n not in got]
