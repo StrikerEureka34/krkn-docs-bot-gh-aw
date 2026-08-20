@@ -52,26 +52,6 @@ def validate(text, record):
     return None
 
 
-def doc_lines(scn, names, limit=40):
-    """Lines from krkn-hub/docs/<scenario>.md that mention a parameter we are
-    about to describe. Most scenario READMEs are a stub pointing here, so
-    without this the model is asked to describe a name and nothing else.
-
-    Selected by relevance rather than by position: these files run to several
-    kilobytes and put their parameter table well past any byte cap."""
-    doc = Path(scn).parent / "docs" / f"{Path(scn).name}.md"
-    if not doc.exists():
-        return ""
-    keep = []
-    for line in doc.read_text(encoding="utf-8-sig", errors="replace").splitlines():
-        stripped = " ".join(line.split())
-        if stripped and any(n in stripped for n in names):
-            keep.append(stripped)
-            if len(keep) >= limit:
-                break
-    return "\n".join(keep)
-
-
 def build_prompt(scenario, names, ctx):
     """The user message. Assembled the same way every run so the call is as
     reproducible as the model allows."""
@@ -85,8 +65,6 @@ def build_prompt(scenario, names, ctx):
         for label in ("type", "default", "allowed", "required"):
             if p.get(label):
                 out.append(f"    {label}: {p[label]}")
-    if ctx.get("doc"):
-        out += ["", "From the scenario documentation:", ctx["doc"]]
     if ctx.get("examples"):
         out += ["", "Examples from the same scenario, for voice:"]
         out += [f"- {n}: {d}" for n, d in ctx["examples"]]
@@ -100,7 +78,6 @@ def context(scn, names, records):
     wanted = set(names)
     return {
         "readme": readme.read_text(encoding="utf-8")[:2000] if readme.exists() else "",
-        "doc": doc_lines(scn, wanted),
         "params": {r.name: {"type": r.type or "",
                             "default": r.default if r.default is not None else "",
                             "allowed": ", ".join(r.allowed_values or []),

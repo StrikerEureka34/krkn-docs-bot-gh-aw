@@ -2,8 +2,7 @@ import io
 import urllib.error
 import pytest
 
-from bot.describe import (build_prompt, context, describe, describe_fn,
-                          doc_lines, validate)
+from bot.describe import build_prompt, context, describe, describe_fn, validate
 from bot.parser import ParamRecord
 
 CTX = {"params": {"BLOCK_SIZE": {"type": "number", "default": "512"}}}
@@ -376,36 +375,3 @@ def test_a_reply_with_no_requested_name_is_printed(capsys):
 
     assert describe("s", ["A"], {}, transport=transport) == {}
     assert "no requested name in the reply" in capsys.readouterr().err
-
-
-def test_doc_lines_picks_rows_for_the_requested_names(tmp_path):
-    """The tables in krkn-hub/docs sit several KB in, past any byte cap, so
-    selection is by relevance rather than by position."""
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "http-load.md").write_text(
-        "# Title\n" + ("filler\n" * 400) +
-        "|KEEPALIVE| Enable HTTP keep-alive connections |true|\n"
-        "|UNRELATED| Something else |x|\n", encoding="utf-8")
-    (tmp_path / "http-load").mkdir()
-    got = doc_lines(tmp_path / "http-load", {"KEEPALIVE"})
-    assert "Enable HTTP keep-alive connections" in got
-    assert "UNRELATED" not in got
-
-
-def test_doc_lines_is_empty_when_the_scenario_has_no_doc(tmp_path):
-    (tmp_path / "rollback").mkdir()
-    assert doc_lines(tmp_path / "rollback", {"RUN_UUID"}) == ""
-
-
-def test_doc_lines_is_capped(tmp_path):
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "s.md").write_text("A mentions A\n" * 500, encoding="utf-8")
-    (tmp_path / "s").mkdir()
-    assert len(doc_lines(tmp_path / "s", {"A"}).splitlines()) == 40
-
-
-def test_the_doc_reaches_the_prompt():
-    prompt = build_prompt("http-load", ["HTTP2"],
-                          {"doc": "|HTTP2| Enable HTTP/2 protocol support |true|"})
-    assert "From the scenario documentation:" in prompt
-    assert "Enable HTTP/2 protocol support" in prompt
