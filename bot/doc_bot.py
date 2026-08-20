@@ -4,8 +4,7 @@ import json
 import os
 from pathlib import Path
 
-from bot.parser import (doc_descriptions, extract_env_params,
-                        extract_krknctl_params,
+from bot.parser import (extract_env_params, extract_krknctl_params,
                         build_skip_list, is_global, require_sources)
 from bot.describe import describe_fn
 from bot.descriptions import resolve_descriptions
@@ -51,15 +50,13 @@ def _emit_one(scenario, source, records, website_root, source_ref, scn, memo):
             r.description_source = prev.get(r.name, {}).get("description_source")
     published = {r.name: pub_desc[r.flag or r.name] for r in records
                  if (r.flag or r.name) in pub_desc}
-    # A borrow and a doc-table row are re-derived every run, so a curated page
-    # row can overtake them and an updated krkn-hub doc is not frozen out.
+    # A borrow is re-derived every run so a curated page row can overtake it.
     existing = {n: p.get("description", "") for n, p in prev.items()
-                if p.get("description_source") not in ("krknctl", "hub-doc")}
+                if p.get("description_source") != "krknctl"}
     reasons = {}
     descs, gaps = resolve_descriptions(scenario, records, existing,
                                        describe_fn(scn, records, reasons, memo),
-                                       published=published,
-                                       doc=doc_descriptions(scn))
+                                       published=published)
     emit_data_file(website_root, scenario, source, records, descs, source_ref)
     # A rejection reason beats "nothing described it": the two need opposite fixes.
     gaps = [(n, f, reasons.get(n, t) if f == "" else t) for n, f, t in gaps]

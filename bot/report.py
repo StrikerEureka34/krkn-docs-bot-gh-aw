@@ -28,7 +28,7 @@ def _fix_hint(blank):
     lines += [f"- {', '.join(sorted(s))}: {h}" for h, s in sorted(by_hint.items())]
     return "\n".join(lines) + "\n"
 
-FILLED = ("published-table", "llm", "hub-doc")
+FILLED = ("published-table", "llm")
 ORPHAN = "orphan"
 
 
