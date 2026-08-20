@@ -9,7 +9,7 @@ import urllib.request
 from dataclasses import asdict
 from pathlib import Path
 
-MAX_LEN = 120
+MAX_LEN = 160
 # 30s was too tight: a free-tier endpoint answered the same prompt in 20s, 27s
 # and 83s within one hour, so the limit has to cover the slow end, not the fast.
 _TIMEOUT = int(os.environ.get("LLM_TIMEOUT", "120"))
@@ -22,7 +22,7 @@ _PLACEHOLDER = re.compile(r'^(configures?|sets?|specifies|controls?) (the )?\w+\
 
 _SYSTEM = (
     "Write one plain sentence describing each parameter, for a documentation "
-    "table. One sentence, at most 120 characters, no markdown. Describe only what "
+    "table. One sentence, at most 160 characters, no markdown. Describe only what "
     "the context states. Never state a default, range or unit that is not in that "
     "parameter's own record. Do not repeat the default value; the table shows it "
     "in its own column. If unsure, return an empty string for that parameter. "

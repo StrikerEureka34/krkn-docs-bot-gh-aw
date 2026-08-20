@@ -210,7 +210,7 @@ def test_a_rejected_description_is_not_memoised(tmp_path, monkeypatch):
 @pytest.mark.parametrize("text,reason", [
     ("", "no description produced"),
     ("one\ntwo", "rejected: contains a newline"),
-    ("x" * 121, "rejected: too long (121 > 120)"),
+    ("x" * 161, "rejected: too long (161 > 160)"),
     ("Configures port.", "rejected: says nothing"),
 ])
 def test_rejections(text, reason):
