@@ -4,7 +4,8 @@ import json
 import os
 from pathlib import Path
 
-from bot.parser import (extract_env_params, extract_krknctl_params,
+from bot.parser import (doc_descriptions, extract_env_params,
+                        extract_krknctl_params,
                         build_skip_list, is_global, require_sources)
 from bot.describe import describe_fn
 from bot.descriptions import resolve_descriptions
@@ -56,7 +57,8 @@ def _emit_one(scenario, source, records, website_root, source_ref, scn, memo):
     reasons = {}
     descs, gaps = resolve_descriptions(scenario, records, existing,
                                        describe_fn(scn, records, reasons, memo),
-                                       published=published)
+                                       published=published,
+                                       doc=doc_descriptions(scn))
     emit_data_file(website_root, scenario, source, records, descs, source_ref)
     # A rejection reason beats "nothing described it": the two need opposite fixes.
     gaps = [(n, f, reasons.get(n, t) if f == "" else t) for n, f, t in gaps]
