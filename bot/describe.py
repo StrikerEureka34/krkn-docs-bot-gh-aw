@@ -193,9 +193,12 @@ def describe(scenario, names, ctx, transport=None, errors=None):
         if not base.startswith("https://"):
             return _fail(errors, f"LLM_BASE_URL must be https, got {base[:40]!r}")
         transport = lambda body: _post(base + "/chat/completions", key, body)  # noqa: E731
-    # No response_format: some endpoints reject the field outright, and the reply
-    # is parsed with json.loads either way.
+    # Ask for JSON rather than only requesting it in prose: a small model told
+    # "return JSON only" will still answer with something else. Not every
+    # endpoint accepts the field, so a 400 retries once without it and we are
+    # back to the previous behaviour exactly.
     body = {"model": os.environ.get("LLM_MODEL", _MODEL),
+            "response_format": {"type": "json_object"},
             "temperature": 0,
             "messages": [{"role": "system", "content": _SYSTEM},
                          {"role": "user",
@@ -203,7 +206,17 @@ def describe(scenario, names, ctx, transport=None, errors=None):
     try:
         payload = transport(body)
     except urllib.error.HTTPError as e:
-        return _fail(errors, f"endpoint returned HTTP {e.code}: {_body(e, key)}")
+        if e.code != 400 or "response_format" not in body:
+            return _fail(errors, f"endpoint returned HTTP {e.code}: {_body(e, key)}")
+        body.pop("response_format")
+        print("describe: endpoint rejected response_format, retrying without it",
+              file=sys.stderr)
+        try:
+            payload = transport(body)
+        except urllib.error.HTTPError as e2:
+            return _fail(errors, f"endpoint returned HTTP {e2.code}: {_body(e2, key)}")
+        except Exception as e2:
+            return _fail(errors, f"endpoint unreachable ({type(e2).__name__})")
     except Exception as e:
         return _fail(errors, f"endpoint unreachable ({type(e).__name__})")
     try:
@@ -212,5 +225,19 @@ def describe(scenario, names, ctx, transport=None, errors=None):
         return _fail(errors, f"unexpected response shape ({type(e).__name__})")
     if not isinstance(raw, dict):
         return _fail(errors, "response JSON was not an object")
-    return {n: raw[n].strip() for n in names
+    # A model that wraps the mapping in one key, {"parameters": {...}}, is
+    # answering correctly in the wrong shape. Unwrap rather than drop it.
+    if not any(n in raw for n in names) and len(raw) == 1:
+        inner = next(iter(raw.values()))
+        if isinstance(inner, dict):
+            raw = inner
+    out = {n: raw[n].strip() for n in names
             if isinstance(raw.get(n), str) and raw[n].strip()}
+    if not out:
+        # Say what came back, so "the model declined" can be told apart from
+        # "the model answered in a shape we do not read". Content only, no
+        # headers, so the key cannot ride along.
+        body_text = " ".join(str(payload["choices"][0]["message"]["content"]).split())
+        print(f"describe: no requested name in the reply: {body_text[:200]!r}",
+              file=sys.stderr)
+    return out

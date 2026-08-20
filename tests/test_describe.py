@@ -1,3 +1,5 @@
+import io
+import urllib.error
 import pytest
 
 from bot.describe import build_prompt, context, describe, describe_fn, validate
@@ -318,3 +320,58 @@ def test_a_parameter_the_model_declined_is_not_reported_as_having_no_source():
     finally:
         d.describe = real
     assert reasons["HTTP2"] == "the model was asked and returned nothing"
+
+
+def test_response_format_is_requested():
+    sent = {}
+
+    def transport(body):
+        sent.update(body)
+        return {"choices": [{"message": {"content": '{"A": "text"}'}}]}
+
+    describe("s", ["A"], {}, transport=transport)
+    assert sent["response_format"] == {"type": "json_object"}
+
+
+def test_an_endpoint_that_rejects_response_format_still_works(capsys):
+    """Not every endpoint accepts the field. A 400 must retry without it rather
+    than lose the run, which is exactly the old behaviour."""
+    calls = []
+
+    def transport(body):
+        calls.append(dict(body))
+        if "response_format" in body:
+            raise urllib.error.HTTPError("u", 400, "bad", {}, io.BytesIO(b"no such field"))
+        return {"choices": [{"message": {"content": '{"A": "text"}'}}]}
+
+    got = describe("s", ["A"], {}, transport=transport)
+    assert got == {"A": "text"}
+    assert len(calls) == 2 and "response_format" not in calls[1]
+
+
+def test_a_non_400_is_not_retried():
+    calls = []
+
+    def transport(body):
+        calls.append(1)
+        raise urllib.error.HTTPError("u", 401, "no", {}, io.BytesIO(b"bad key"))
+
+    errors = []
+    assert describe("s", ["A"], {}, transport=transport, errors=errors) == {}
+    assert len(calls) == 1 and "401" in errors[0]
+
+
+def test_a_mapping_wrapped_in_one_key_is_unwrapped():
+    def transport(body):
+        return {"choices": [{"message":
+                {"content": '{"parameters": {"A": "text"}}'}}]}
+
+    assert describe("s", ["A"], {}, transport=transport) == {"A": "text"}
+
+
+def test_a_reply_with_no_requested_name_is_printed(capsys):
+    def transport(body):
+        return {"choices": [{"message": {"content": '{"other": "text"}'}}]}
+
+    assert describe("s", ["A"], {}, transport=transport) == {}
+    assert "no requested name in the reply" in capsys.readouterr().err
