@@ -108,11 +108,16 @@ def describe_fn(scn, records, reasons, memo=None):
                 out[name] = memo[name] = text
             else:
                 reasons[name] = why
-        # "the model was never reached" and "nothing describes it" need opposite
-        # fixes, so the report must not collapse them into one message.
+        # Three outcomes needing three different fixes: never reached, reached
+        # and declined, reached and answered badly. The last is already above.
+        silent = [n for n in todo if n not in got]
         for n in todo:
-            if errors and n not in out:
-                reasons.setdefault(n, f"model unavailable: {errors[0]}")
+            if n not in out:
+                reasons.setdefault(n, f"model unavailable: {errors[0]}" if errors
+                                   else "the model was asked and returned nothing")
+        if silent and not errors:
+            print(f"describe: model returned no text for {', '.join(silent)}",
+                  file=sys.stderr)
         return out
     return fn
 

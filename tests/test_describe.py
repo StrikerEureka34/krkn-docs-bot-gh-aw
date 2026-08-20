@@ -299,3 +299,22 @@ def test_an_error_body_does_not_carry_the_key_into_the_report(monkeypatch):
     assert errors and "HTTP 401" in errors[0]
     assert "nvapi-SEKRIT-0123456789" not in errors[0]
     assert "***" in errors[0]
+
+
+def test_a_parameter_the_model_declined_is_not_reported_as_having_no_source():
+    """Three states need three fixes: the key is wrong, nothing describes it, or
+    the model was asked and gave nothing. The third used to read as the second."""
+    import bot.describe as d
+    from bot.descriptions import resolve_descriptions
+    from bot.describe import describe_fn
+
+    real = d.describe
+    d.describe = lambda *a, **k: {}
+    try:
+        recs = [ParamRecord(name="HTTP2")]
+        reasons = {}
+        resolve_descriptions("http-load", [ParamRecord(name="HTTP2")], {},
+                             describe_fn("http-load", recs, reasons))
+    finally:
+        d.describe = real
+    assert reasons["HTTP2"] == "the model was asked and returned nothing"
