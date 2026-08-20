@@ -51,9 +51,10 @@ def _emit_one(scenario, source, records, website_root, source_ref, scn, memo):
             r.description_source = prev.get(r.name, {}).get("description_source")
     published = {r.name: pub_desc[r.flag or r.name] for r in records
                  if (r.flag or r.name) in pub_desc}
-    # A borrow is re-derived every run so a curated page row can overtake it.
+    # A borrow and a doc-table row are re-derived every run, so a curated page
+    # row can overtake them and an updated krkn-hub doc is not frozen out.
     existing = {n: p.get("description", "") for n, p in prev.items()
-                if p.get("description_source") != "krknctl"}
+                if p.get("description_source") not in ("krknctl", "hub-doc")}
     reasons = {}
     descs, gaps = resolve_descriptions(scenario, records, existing,
                                        describe_fn(scn, records, reasons, memo),

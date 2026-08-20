@@ -101,7 +101,9 @@ def test_scenario_doc_fills_a_param_env_sh_leaves_bare():
         doc={"HTTP2": "Enable HTTP/2 protocol support"})
     assert out["HTTP2"] == "Enable HTTP/2 protocol support"
     assert recs[0].description_source == "hub-doc"
-    assert gaps == []
+    # Reported, so the commit message says where the wording came from. It is
+    # not the row's own source file, so a reviewer has to be able to see it.
+    assert gaps == [("HTTP2", "hub-doc", "Enable HTTP/2 protocol support")]
 
 
 def test_a_curated_published_row_outranks_the_scenario_doc():

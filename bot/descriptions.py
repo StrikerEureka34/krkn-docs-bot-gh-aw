@@ -27,6 +27,7 @@ def resolve_descriptions(scenario, records, existing, llm_fn, published=None,
             # prose still wins, above the model so this never costs a call.
             out[r.name] = doc[r.name]
             r.description_source = "hub-doc"
+            gaps.append((r.name, "hub-doc", out[r.name]))
         elif r.borrowed_description:
             # Not this row's own source, so curated page prose outranks it. The
             # label names where it came from: krknctl, or a CRD column's field.
