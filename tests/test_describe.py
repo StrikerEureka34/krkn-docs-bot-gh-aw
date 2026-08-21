@@ -91,6 +91,33 @@ def test_context_without_a_readme_is_still_usable(tmp_path):
     assert ctx["readme"] == ""
 
 
+def test_the_overview_is_the_readme_and_the_scenario_doc(tmp_path):
+    """The README is normally a stub, but it is where a contributor writes up a
+    new parameter, so dropping either one loses the context the model needs."""
+    scn = tmp_path / "http-load"
+    scn.mkdir()
+    (scn / "README.md").write_text(
+        "See [doc](../docs/http-load.md)\n\n"
+        "## Redirect handling\n"
+        "`FOLLOW_REDIRECTS` decides what a pod does when a target redirects.",
+        encoding="utf-8")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "http-load.md").write_text(
+        "This scenario generates distributed HTTP load with Vegeta pods.",
+        encoding="utf-8")
+    ctx = context(scn, ["FOLLOW_REDIRECTS"], [ParamRecord(name="FOLLOW_REDIRECTS")])
+    assert "Redirect handling" in ctx["readme"]
+    assert "distributed HTTP load" in ctx["readme"]
+
+
+def test_the_readme_is_enough_when_there_is_no_scenario_doc(tmp_path):
+    scn = tmp_path / "solo"
+    scn.mkdir()
+    (scn / "README.md").write_text("Everything worth knowing.", encoding="utf-8")
+    ctx = context(scn, ["X"], [ParamRecord(name="X")])
+    assert ctx["readme"] == "Everything worth knowing."
+
+
 def test_the_memo_stops_a_second_call_for_the_same_param(tmp_path, monkeypatch):
     """A param on both tabs must get one description. Two calls return two
     different sentences, so the tabs would disagree about the same parameter."""

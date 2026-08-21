@@ -74,10 +74,15 @@ def build_prompt(scenario, names, ctx):
 def context(scn, names, records):
     """What the model gets. Curated in code rather than left to the model to go
     looking for, so the same run always sends the same thing."""
-    readme = Path(scn) / "README.md"
+    scn = Path(scn)
+    # Both: the README is usually a stub, but it is where a contributor writes up
+    # a new parameter, and docs/<scenario>.md carries the scenario itself.
+    sources = (scn / "README.md", scn.parent / "docs" / f"{scn.name}.md")
     wanted = set(names)
     return {
-        "readme": readme.read_text(encoding="utf-8")[:2000] if readme.exists() else "",
+        "readme": "\n\n".join(
+            p.read_text(encoding="utf-8-sig", errors="replace")[:2000]
+            for p in sources if p.exists()),
         "params": {r.name: {"type": r.type or "",
                             "default": r.default if r.default is not None else "",
                             "allowed": ", ".join(r.allowed_values or []),
