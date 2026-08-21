@@ -2,8 +2,8 @@ import io
 import urllib.error
 import pytest
 
-from bot.describe import (build_prompt, context, describe, describe_fn,
-                          first_sentence, validate)
+from bot.describe import (MAX_LEN, build_prompt, context, describe, describe_fn,
+                          validate)
 from bot.parser import ParamRecord
 
 CTX = {"params": {"BLOCK_SIZE": {"type": "number", "default": "512"}}}
@@ -197,18 +197,17 @@ def test_the_key_alone_produces_the_full_request(monkeypatch):
     }
 
 
-def test_a_rejected_description_is_not_memoised(tmp_path, monkeypatch):
+def test_a_flagged_description_is_still_published(tmp_path, monkeypatch):
+    """The bot no longer decides. Placeholder text reaches the table and the
+    validator's reason rides along for the reviewer."""
     monkeypatch.setattr(
         "bot.describe.describe",
         lambda s, n, c, transport=None, errors=None: {x: "Configures port." for x in n})
     reasons, memo = {}, {}
     fn = describe_fn(tmp_path, [ParamRecord(name="X")], reasons, memo)
-    assert fn("s", ["X"]) == {}
-    assert memo == {}
-    # The reason now carries the text as well, so a rejection stays diagnosable
-    # once the reply is gone.
-    assert reasons["X"].startswith("rejected: says nothing")
-    assert "Configures port." in reasons["X"]
+    assert fn("s", ["X"]) == {"X": "Configures port."}
+    assert memo == {"X": "Configures port."}
+    assert reasons["X"] == "rejected: says nothing"
 
 
 @pytest.mark.parametrize("text,reason", [
@@ -217,13 +216,13 @@ def test_a_rejected_description_is_not_memoised(tmp_path, monkeypatch):
     ("x" * 161, "rejected: too long (161 > 160)"),
     ("Configures port.", "rejected: says nothing"),
 ])
-def test_rejections(text, reason):
+def test_validator_reasons(text, reason):
     assert validate(text, {"name": "PORT"}) == reason
 
 
-def test_text_that_invents_a_value_is_rejected():
+def test_text_that_invents_a_value_is_flagged():
     """A model that writes 1024 when the source says 512 reads as authoritative
-    and is wrong, which is worse than an empty cell."""
+    and is wrong. It still publishes, but the reviewer is told."""
     assert validate("Block size, default 1024", {"name": "B", "default": "512"}) == \
         'rejected: contains a value not in the source ("1024")'
 
@@ -381,23 +380,13 @@ def test_a_reply_with_no_requested_name_is_printed(capsys):
     assert "no requested name in the reply" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("text,want", [
-    ("One. Two.", "One."),
-    ("Only one sentence with no stop", "Only one sentence with no stop"),
-    ("Ends in a question? And more.", "Ends in a question?"),
-    ("", ""),
-])
-def test_first_sentence(text, want):
-    assert first_sentence(text) == want
-
-
-def test_an_over_long_reply_is_salvaged_not_discarded():
-    """The model ignores a character budget, so an overflow is usually a second
-    sentence the prompt never asked for. Keep the first rather than lose it."""
+def test_an_over_long_reply_is_published_verbatim():
+    """No constraint on what the model writes. Over-length is a review note,
+    not a reason to throw the description away."""
     long = ("Decides whether the generator follows redirect chains and measures "
             "the final response. When disabled it records the redirect itself "
             "and moves on to the next request instead of chasing it further.")
-    assert len(long) > 160
+    assert len(long) > MAX_LEN
 
     recs = [ParamRecord(name="FOLLOW_REDIRECTS")]
     reasons = {}
@@ -408,19 +397,7 @@ def test_an_over_long_reply_is_salvaged_not_discarded():
         got = describe_fn("http-load", recs, reasons)("http-load", ["FOLLOW_REDIRECTS"])
     finally:
         d.describe = real
-    assert got["FOLLOW_REDIRECTS"].endswith("measures the final response.")
-    assert reasons == {}
+    assert got["FOLLOW_REDIRECTS"] == long
+    assert reasons["FOLLOW_REDIRECTS"].startswith("rejected: too long")
 
 
-def test_a_rejection_carries_the_text_so_it_can_be_diagnosed():
-    recs = [ParamRecord(name="A")]
-    reasons = {}
-    import bot.describe as d
-    real = d.describe
-    d.describe = lambda *a, **k: {"A": "Configures the port"}   # says nothing
-    try:
-        describe_fn("s", recs, reasons)("s", ["A"])
-    finally:
-        d.describe = real
-    assert "says nothing" in reasons["A"]
-    assert "Configures the port" in reasons["A"]

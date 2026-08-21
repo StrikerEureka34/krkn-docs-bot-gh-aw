@@ -88,19 +88,9 @@ def context(scn, names, records):
     }
 
 
-_SENTENCE_RE = re.compile(r'^(.*?[.!?])(?:\s|$)', re.S)
-
-
-def first_sentence(text):
-    """The prompt asks for one sentence. A reply that runs long is usually two
-    or three, so keep the first rather than discarding a usable description."""
-    found = _SENTENCE_RE.match((text or "").strip())
-    return found.group(1) if found else (text or "").strip()
-
-
 def describe_fn(scn, records, reasons, memo=None):
-    """llm_fn for resolve_descriptions. Rejections go into `reasons` so the report
-    says why a cell is blank, not only that it is. memo is shared across a
+    """llm_fn for resolve_descriptions. Anything the model writes is published;
+    `reasons` carries what a reviewer should look at. memo is shared across a
     scenario's two sources, so a param on both tabs gets one description."""
     memo = {} if memo is None else memo
     by_name = {r.name: r for r in records}
@@ -113,23 +103,14 @@ def describe_fn(scn, records, reasons, memo=None):
         errors = []
         got = describe(scenario, todo, context(scn, todo, records), errors=errors)
         for name, text in got.items():
-            record = asdict(by_name[name])
-            why = validate(text, record)
-            if why and why.startswith("rejected: too long"):
-                # Salvage rather than discard: the overflow is usually a second
-                # sentence the prompt did not ask for.
-                shorter = first_sentence(text)
-                if shorter != text and validate(shorter, record) is None:
-                    text, why = shorter, None
-            if why is None:
-                out[name] = memo[name] = text
-            else:
-                # Carry the text into the reason. Without it a rejection is
-                # unreproducible: the reply is gone by the time anyone reads
-                # the report.
-                reasons[name] = f"{why}, model wrote: {text[:120]}"
-        # Three outcomes needing three different fixes: never reached, reached
-        # and declined, reached and answered badly. The last is already above.
+            if not (text or "").strip():
+                continue
+            out[name] = memo[name] = text
+            why = validate(text, asdict(by_name[name]))
+            if why:
+                reasons[name] = why
+        # Never reached and reached-but-declined need opposite fixes, so the
+        # report must not collapse them into one message.
         silent = [n for n in todo if n not in got]
         for n in todo:
             if n not in out:
